@@ -1,0 +1,55 @@
+# Environment variables
+backend/.env
+frontend/.env
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+# Dependencies
+backend/node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite3
+*.sqlite
+
+# Logs
+*.log
+logs/
+pino-pretty.log
+
+# Redis
+dump.rdb
+
+# Temp files
+tmp/
+temp/
+*.tmp
+
+# Configuration files
+backend/.claude/settings.local.json.example
+backend/.claude/settings.json
+
+# Documentation
+backend/docs/sprints_concluidos/*
