@@ -1,0 +1,28 @@
+# Dockerfile.dev
+#
+# Imagem de desenvolvimento para a aplicação Node.js
+#
+# Como usar:
+#     docker build -f Dockerfile.dev -t analytics_dev
+#     docker run -p 3000:3000 -v $(pwd):/app analytics_dev
+
+# Usa Node.js 20- LTS com alpine
+FROM node:20-alpine
+
+# Define diretório de trabalho
+WORKDIR /app
+
+# Copia package.json e package-lock.json para o container
+COPY package*.json ./
+
+# Instala dependências
+RUN npm ci
+
+# Copia o código fonte para o container
+COPY . .
+
+# Exponha a porta 3000
+EXPOSE 3000
+
+# Comando de desenvolvimento com hot reload
+CMD ["npm", "run", "dev"]

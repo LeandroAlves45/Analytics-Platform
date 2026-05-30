@@ -1,0 +1,43 @@
+# .dockerignore
+#
+# Ignora arquivos de desenvolvimento que não devem ser incluídos no container
+
+# Dependências de desenvolvimento
+node_modules
+
+# Build output
+dist
+build
+
+# Ficheiros de ambiente
+.env*
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Ficheiros Git
+.git
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Coverage
+backend/coverage
+coverage/
+.nyc_output
+
+# IDE e sistema operativo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# IA
+.claude
+.cursor

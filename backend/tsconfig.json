@@ -8,10 +8,10 @@
     "rootDir": "./src",
     "baseUrl": "./src",
     "paths": {
-      "@domain/*": ["domain/*"],
-      "@application/*": ["application/*"],
-      "@infra/*": ["infra/*"],
-      "@shared/*": ["shared/*"]
+      "@domain/*": ["./src/domain/*"],
+      "@application/*": ["./src/application/*"],
+      "@infra/*": ["./src/infra/*"],
+      "@shared/*": ["./src/shared/*"]
     },
     "strict": true,
     "noImplicitAny": true,
