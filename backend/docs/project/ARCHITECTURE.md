@@ -496,7 +496,159 @@ tests/
     └── api.e2e.test.ts
 ```
 
-## 4. Adding a New Feature
+## 4. Error Handling
+
+### Error Hierarchy
+
+All errors in this application extend `AppError`, a base class that provides:
+- **statusCode**: HTTP status code to return
+- **code**: Machine-readable error code (e.g., `NOT_FOUND`, `VALIDATION_ERROR`)
+- **isOperational**: Boolean flag distinguishing expected errors from bugs
+- **cause**: Original error for debugging (error chaining)
+
+```typescript
+// Error hierarchy:
+Error (JavaScript native)
+└── AppError (base class)
+    ├── ValidationError (HTTP 422 - invalid input)
+    ├── NotFoundError (HTTP 404 - resource missing)
+    └── UnauthorizedError (HTTP 401/403 - auth failure)
+```
+
+### Machine-Readable Error Codes
+
+Every error has a stable code that clients can handle programmatically without parsing messages:
+
+```typescript
+export const ErrorCodes = {
+  INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
+  BAD_REQUEST: "BAD_REQUEST",
+  ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  FORBIDDEN: "FORBIDDEN",
+  NOT_FOUND: "NOT_FOUND",
+  CONFLICT: "CONFLICT",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+} as const;
+```
+
+### Operational vs System Errors
+
+The `isOperational` flag distinguishes:
+
+**Operational (expected, client error)**:
+```typescript
+throw new ValidationError('Latency must be positive');
+// isOperational = true → HTTP 422 with error details
+```
+
+**System (unexpected, application bug)**:
+```typescript
+throw new Error('Database connection pool exhausted');
+// isOperational = false → HTTP 500 + stack trace + alerting
+```
+
+### Example: Using Errors in Use Cases
+
+```typescript
+export class RecordMetricUseCase {
+  async execute(input: RecordMetricInput): Promise<void> {
+    // Domain validation throws ValidationError
+    const metric = new Metric(
+      input.workspaceId,
+      input.endpoint,
+      input.method,
+      input.latencyMs,
+      input.statusCode
+    );
+
+    // Repository not found throws NotFoundError
+    const workspace = await this.workspacesRepository.getById(
+      input.workspaceId
+    );
+    if (!workspace) {
+      throw new NotFoundError('Workspace', input.workspaceId);
+    }
+
+    // Unauthorized throws UnauthorizedError
+    if (workspace.isArchived) {
+      throw new UnauthorizedError('Cannot record metrics in archived workspace', 403);
+    }
+
+    await this.metricsRepository.save(metric);
+  }
+}
+```
+
+### Error Chaining for Debugging
+
+Preserve original errors for better debugging:
+
+```typescript
+try {
+  await this.db.insert(metricsTable).values(metric);
+} catch (original) {
+  throw new AppError(
+    'Failed to save metric to database',
+    'INTERNAL_SERVER_ERROR',
+    500,
+    { cause: original }  // Preserves stack trace
+  );
+}
+```
+
+### ErrorPresenter Layer
+
+Errors are formatted for HTTP response by the ErrorPresenter, which handles:
+- Operational errors: Returns statusCode + toJSON() payload
+- System errors: Returns 500 with environment-aware message
+
+```typescript
+export class ErrorPresenter {
+  static present(error: AppError): PresentedError {
+    return {
+      statusCode: error.statusCode,
+      body: error.toJSON(),
+    };
+  }
+
+  static presentUnknown(error: Error, isProduction: boolean): PresentedError {
+    return {
+      statusCode: 500,
+      body: {
+        error: {
+          code: ErrorCodes.INTERNAL_SERVER_ERROR,
+          message: isProduction
+            ? 'An unexpected error occurred. Please try again later.'
+            : error.message,
+        },
+      },
+    };
+  }
+}
+```
+
+### API Error Response Format
+
+All errors follow this consistent format:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Latency must be positive",
+    "details": [
+      {
+        "field": "latencyMs",
+        "value": -100,
+        "message": "Must be positive"
+      }
+    ]
+  }
+}
+```
+
+## 5. Adding a New Feature
 
 ### Example: Export Metrics to CSV
 

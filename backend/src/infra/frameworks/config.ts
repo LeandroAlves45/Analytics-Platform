@@ -53,6 +53,9 @@ const envSchema = z.object({
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASSWORD: z.string().min(1).optional(),
   SMTP_FROM: z.string().email().min(1).optional(),
+
+  // Codecov (opcional — só usado em CI; configurar também em GitHub Secrets)
+  CODECOV_TOKEN: z.string().min(1).optional(),
 });
 
 // Type derivado do schema -> sempre sincronizado com o schema

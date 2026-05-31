@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "CommonJS",
+    // Node16 em module + moduleResolution: par obrigatório no TS 6.
+    // Com "type": "commonjs" no package.json, continua a emitir CommonJS.
+    "module": "Node16",
     "lib": ["ES2020"],
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
     "paths": {
       "@domain/*": ["./src/domain/*"],
       "@application/*": ["./src/application/*"],

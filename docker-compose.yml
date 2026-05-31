@@ -1,0 +1,77 @@
+# docker-compose.yml
+# Define o ambiente de desenvolvimento local.
+# Dois serviços: PostgreSQL com TimescaleDB e Redis.
+# Comando para iniciar: docker-compose up -d
+# Comando para parar: docker-compose down
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL com extensão TimescaleDB
+  # Usamos a imagem oficial da Timescale que já inclui o PostgreSQL 15
+  # e a extensão TimescaleDB pré-instalada.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: analytics-saas-postgres
+
+    # Variáveis de ambiente que o PostgreSQL usa ao iniciar pela primeira vez
+    environment:
+      - POSTGRES_USER=analytics_user
+      - POSTGRES_PASSWORD=analyticspass
+      - POSTGRES_DB=analytics_db
+
+    # Mapeamento de portas: porta_do_host:porta_do_container
+    ports:
+      - "5432:5432"
+
+    # Volume persistente: os dados da base de dados não se perdem
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+      # Script de inicialização executado uma vez
+      - ./docker/init-timescaledb.sql:/docker-entrypoint-initdb.d/init-timescaledb.sql
+
+    # Healthcheck: verifica se o PostgreSQL está a funcionar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    # Reinicia automaticamente se falhar
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 (cache e queue system para BullMQ)
+  # Usamos alpine para imagem mais leve.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: analytics-saas-redis
+
+    # Porta padrão do Redis
+    ports:
+      - "6379:6379"
+
+    # Volume persistente: os dados do Redis não se perdem
+    volumes:
+      - redis_data:/data
+
+    # Healthcheck: verifica se o Redis está a funcionar
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    # Reinicia automaticamente se falhar
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Volumes nomeados: geridos pelo Docker, persistem entre paragens do container
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

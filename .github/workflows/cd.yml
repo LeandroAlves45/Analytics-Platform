@@ -1,0 +1,139 @@
+# .github/workflows/cd.yml
+#
+# Pipeline de Entrega Contínua (CD).
+# Gere os deploys para staging e produção.
+#
+# ESTADO ACTUAL:
+# Os jobs de deploy estão estruturados mas com os steps reais comentados.
+# Serão activados nos Sprints 7-8 quando tivermos infraestrutura configurada.
+#
+# Fluxo futuro:
+#   push para develop → deploy automático para staging
+#   push para main    → deploy para staging → aprovação manual → deploy para produção
+
+name: CD
+
+on:
+  # Só corre em pushes directos (não em PRs)
+  push:
+    branches:
+      - main
+      - develop
+
+# Garante que apenas um deploy corre de cada vez por environment.
+# Se um deploy estiver em curso e outro for triggered, o novo espera.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+# Jobs do workflow
+jobs:
+  # ---------------------------------------------------------------------------
+  # JOB: deploy-staging
+  # Corre quando há push para a branch develop.
+  # Pré-requisito: CI passou (lint, tests, build).
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+
+    # Só corre em pushes para a branch develop
+    if: github.ref == 'refs/heads/develop'
+
+    # Environment do GitHub: permite configurar secrets específicos
+    # e exigir aprovação manual antes do deploy
+    #environment:
+    #  name: staging
+    #  url: https://staging-analytics.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # TODO Sprint 7-8: activar quando Railway/Render estiver configurado
+      # - name: Deploy to Staging (Railway)
+      #   run: |
+      #     curl -X POST https://api.railway.app/webhooks/deploy \
+      #       -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+      #       -d '{"service": "analytics-staging"}'
+
+      # TODO Sprint 7-8: activar migrations em staging
+      # - name: Run database migrations on staging
+      #   run: |
+      #     railway run --service analytics-staging npm run db:migrate
+      #   env:
+      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      # TODO Sprint 7-8: activar health check
+      # - name: Health check
+      #   run: |
+      #     for i in {1..30}; do
+      #       if curl -f https://staging-analytics.example.com/health; then
+      #         echo "Health check passed"
+      #         exit 0
+      #       fi
+      #       sleep 10
+      #     done
+      #     exit 1
+
+      # Placeholder para o Sprint 1: confirma que o job foi atingido
+      - name: Staging deploy placeholder
+        run: |
+          echo "Staging deploy will be configured in Sprint 7-8"
+          echo "Branch: ${{ github.ref }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Actor: ${{ github.actor }}"
+
+  # ---------------------------------------------------------------------------
+  # JOB: deploy-production
+  # Corre quando há push para main E o deploy de staging passou.
+  # Requer aprovação manual via GitHub Environments.
+  # ---------------------------------------------------------------------------
+  # deploy-production:
+  # name: Deploy to Production
+  # runs-on: ubuntu-latest
+
+  # Só corre em pushes para a branch main
+  # if: github.ref == 'refs/heads/main'
+
+  # Environment de produção: requer aprovação manual configurada
+  # no GitHub → Settings → Environments → production → Required reviewers
+  # environment:
+  #   name: production
+  #   url: https://analytics.example.com
+
+  # steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+
+  # TODO Sprint 7-8: activar quando produção estiver configurada
+  # - name: Deploy to Production (Railway)
+  #   run: |
+  #     curl -X POST https://api.railway.app/webhooks/deploy \
+  #       -H "Authorization: Bearer ${{ secrets.RAILWAY_PROD_TOKEN }}" \
+  #       -d '{"service": "analytics-production"}'
+
+  # TODO Sprint 7-8: activar migrations em produção
+  # ATENÇÃO: migrations em produção requerem cuidado extra
+  # Verificar sempre que são backwards-compatible antes de deployar
+
+  # TODO Sprint 7-8: activar health check com rollback automático
+  # - name: Health check with auto-rollback
+  #   run: |
+  #     for i in {1..30}; do
+  #       if curl -f https://analytics.example.com/health; then
+  #         echo "Health check passed"
+  #         exit 0
+  #       fi
+  #       sleep 10
+  #     done
+  #     echo "Health check failed - triggering rollback"
+  #     # TODO: adicionar comando de rollback aqui
+  #     exit 1
+
+  #   - name: Production deploy placeholder
+  #     run: |
+  #       echo "Production deploy will be configured in Sprint 7-8"
+  #       echo "Branch: ${{ github.ref }}"
+  #       echo "Commit: ${{ github.sha }}"
+  #       echo "Actor: ${{ github.actor }}"

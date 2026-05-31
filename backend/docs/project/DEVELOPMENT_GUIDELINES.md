@@ -137,6 +137,67 @@ const latency = end - start; // Calculate latency
 const latency = end - start;
 ```
 
+### Error Handling
+
+Always throw specific error types from `@shared/errors`. Never throw raw `Error` or generic messages.
+
+```typescript
+// ❌ BAD
+throw new Error('Validation failed');
+throw new Error('Not found');
+
+// ✅ GOOD
+throw new ValidationError('Email must be valid');
+throw new NotFoundError('User', userId);
+throw new UnauthorizedError('API key expired', 401);
+```
+
+When throwing errors:
+1. **Use correct error type** based on HTTP semantics
+2. **Include context** in the message (what failed, why)
+3. **Add field details** for ValidationError when applicable
+4. **Set isOperational** only if you expect the error (defaults to `true`)
+5. **Include cause** for error chaining (preserve original error)
+
+```typescript
+// ValidationError with field details
+throw new ValidationError('Invalid metric data', [
+  { field: 'latencyMs', value: -100, message: 'Must be positive' },
+  { field: 'statusCode', value: 600, message: 'Must be 100-599' }
+]);
+
+// Error chaining for debugging
+try {
+  await repository.save(entity);
+} catch (original) {
+  throw new AppError(
+    'Failed to persist metric',
+    'INTERNAL_SERVER_ERROR',
+    500,
+    { cause: original }
+  );
+}
+
+// System error (not operational)
+if (criticalSystemFailure) {
+  throw new AppError('System corrupted', 'INTERNAL_SERVER_ERROR', 500, {
+    isOperational: false  // Will trigger alerting
+  });
+}
+```
+
+Error codes are machine-readable and must match `ErrorCode` union type:
+```typescript
+export type ErrorCode = 
+  | 'INTERNAL_SERVER_ERROR'
+  | 'BAD_REQUEST'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'VALIDATION_ERROR';
+```
+
 ### Logging
 
 Use Pino logger. Nunca `console.log`.
@@ -314,7 +375,11 @@ Reviewing others' code?
 - [ ] Code follows conventions
 - [ ] No hardcoded values
 - [ ] No console.log or debugger
-- [ ] Error handling present
+- [ ] Error handling present and uses AppError subclasses
+- [ ] ValidationError includes field details when applicable
+- [ ] Error chaining used for debugging (cause property)
+- [ ] No generic Error throws (always AppError or subclass)
+- [ ] Correct HTTP status codes assigned to errors
 - [ ] No N+1 queries
 - [ ] Tests covering happy path and errors
 - [ ] No unnecessary complexity

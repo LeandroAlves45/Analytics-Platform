@@ -1,23 +1,24 @@
 // src/shared/errors/UnauthorizedError.ts
 //
-// Erro lançado quando um request não tem autenticação válida
-// ou não tem permissão para aceder a um recurso.
+// Erro lançado quando o request não tem autenticação válida.
+// HTTP 401 Unauthorized — token ausente, expirado ou inválido.
 //
-// DISTINÇÃO IMPORTANTE:
-//   401 Unauthorized: não está autenticado (token ausente ou inválido)
-//   403 Forbidden: está autenticado mas não tem permissão
-//
-// Esta classe cobre ambos os casos com status codes diferentes.
+// Para utilizador autenticado sem permissão, usar ForbiddenError (403).
 
 import { AppError } from "./AppError";
+import { ErrorCodes } from "./ErrorCodes";
 
 export class UnauthorizedError extends AppError {
-  constructor(
-    message: string = "Authentication required",
-    // Por omissão é 401, mas pode ser 403 para casos de autenticação
-    statusCode: 401 | 403 = 401,
-  ) {
-    super(message, statusCode);
-    Object.setPrototypeOf(this, new.target.prototype);
+  /**
+   * Cria um erro 401 — o cliente deve autenticar-se antes de aceder ao recurso.
+   *
+   * @param message - Mensagem para o cliente. Default: "Authentication required".
+   *
+   * @example
+   * throw new UnauthorizedError();
+   * throw new UnauthorizedError("Invalid or expired token");
+   */
+  constructor(message: string = "Authentication required") {
+    super(message, ErrorCodes.UNAUTHORIZED, 401);
   }
 }

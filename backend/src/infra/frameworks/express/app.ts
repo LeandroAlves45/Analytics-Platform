@@ -2,7 +2,9 @@
 // Arquivo de configuração do Express
 
 import express, { Express, Request, Response, NextFunction } from "express";
-import { logger } from "@infra/frameworks/logging";
+import { logger } from "../../frameworks/logging";
+import { errorHandlerMiddleware } from "../../middleware/ErrorHandlerMiddleware";
+import { ErrorCodes } from "../../../shared/errors";
 
 // Interface para request com contexto adicional
 declare global {
@@ -93,31 +95,20 @@ export function createApp(): Express {
       .json({ status: "ready", timestamp: new Date().toISOString() });
   });
 
-  // Middleware: 404 -> Not Found
+  // Middleware: 404 — rota HTTP não registada (diferente de NotFoundError de domínio)
   app.use((_req: Request, res: Response) => {
     res
       .status(404)
-      .json({ error: "Not Found", message: "Endpoint não existe" });
+      .json({
+        error: {
+          code: ErrorCodes.NOT_FOUND,
+          message: "Endpoint does not exist",
+        },
+      });
   });
 
-  // Middleware: Error handling global
-  // Captura erros em qualquer rota/middleware
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    // Loga erro para debugging
-    logger.error("unhandled_error", {
-      error: err.message,
-      stack: err.stack,
-    });
-
-    // Responde com status 500 e mensagem genérica
-    res.status(500).json({
-      error: "Internal Server Error",
-      message:
-        process.env.NODE_ENV === "production"
-          ? "Ocorreu um erro inesperado"
-          : err.message,
-    });
-  });
+  // Middleware: tratamento global de erros — deve ser o último middleware registado
+  app.use(errorHandlerMiddleware);
 
   return app;
 }
