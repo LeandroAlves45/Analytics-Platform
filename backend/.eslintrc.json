@@ -26,10 +26,18 @@
         "allow": ["warn", "error"]
       }
     ],
-    "prefer-const": "warn",
-    "no-var": "warn",
-    "eqeqeq": "warn",
-    "curly": "warn",
-    "prettier/prettier": "warn"
+    "prefer-const": "error",
+    "no-var": "error",
+    "eqeqeq": ["error", "always"],
+    "curly": "error",
+    "prettier/prettier": ["warn", { "endOfLine": "auto" }],
+    "max-lines": [
+      "warn",
+      {
+        "max": 300,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ]
   }
 }
