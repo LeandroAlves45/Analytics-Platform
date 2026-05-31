@@ -97,14 +97,12 @@ export function createApp(): Express {
 
   // Middleware: 404 — rota HTTP não registada (diferente de NotFoundError de domínio)
   app.use((_req: Request, res: Response) => {
-    res
-      .status(404)
-      .json({
-        error: {
-          code: ErrorCodes.NOT_FOUND,
-          message: "Endpoint does not exist",
-        },
-      });
+    res.status(404).json({
+      error: {
+        code: ErrorCodes.NOT_FOUND,
+        message: "Endpoint does not exist",
+      },
+    });
   });
 
   // Middleware: tratamento global de erros — deve ser o último middleware registado

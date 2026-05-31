@@ -82,7 +82,9 @@ export async function closeDatabaseConnection(): Promise<void> {
 // Verifica se a BD está acessível.
 // Usado no health check /ready do Express.
 export async function checkDatabaseConnection(): Promise<boolean> {
-  if (!pool) return false;
+  if (!pool) {
+    return false;
+  }
 
   try {
     // Executa uma query simples para verificar a conexão
