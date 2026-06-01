@@ -8,8 +8,8 @@
 //   - Use case pede um workspace que não existe
 //   - Endpoint de API com identificador inválido
 
-import { AppError } from "./AppError";
-import { ErrorCodes } from "./ErrorCodes";
+import { AppError } from './AppError';
+import { ErrorCodes } from './ErrorCodes';
 
 /** Opções para personalizar a mensagem de NotFoundError. */
 export interface NotFoundErrorOptions {
@@ -35,17 +35,13 @@ export class NotFoundError extends AppError {
    * throw new NotFoundError("Workspace", "ws-123");
    * throw new NotFoundError("User", "john@example.com", { identifierLabel: "email" });
    */
-  constructor(
-    resource: string,
-    identifier: string,
-    options: NotFoundErrorOptions = {},
-  ) {
-    const identifierLabel = options.identifierLabel ?? "id";
+  constructor(resource: string, identifier: string, options: NotFoundErrorOptions = {}) {
+    const identifierLabel = options.identifierLabel ?? 'id';
 
     super(
       `${resource} with ${identifierLabel} '${identifier}' not found`,
       ErrorCodes.NOT_FOUND,
-      404,
+      404
     );
 
     this.resource = resource;
@@ -56,7 +52,7 @@ export class NotFoundError extends AppError {
    * Inclui resource e identifier dentro de error na resposta JSON.
    * Permite ao cliente saber exactamente o que não foi encontrado.
    */
-  toJSON(): ReturnType<AppError["toJSON"]> {
+  toJSON(): ReturnType<AppError['toJSON']> {
     return this.buildErrorPayload({
       resource: this.resource,
       identifier: this.identifier,

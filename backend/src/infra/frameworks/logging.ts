@@ -4,7 +4,7 @@
  * Usa Pino para logging estruturado
  */
 
-import pino from "pino";
+import pino from 'pino';
 
 /**
  * Configuração global de logger Pino
@@ -12,18 +12,18 @@ import pino from "pino";
  */
 export const logger = pino({
   // Level de log mínimo (pode ser overridado por LOG_LEVEL env)
-  level: process.env.LOG_LEVEL || "info",
+  level: process.env.LOG_LEVEL || 'info',
 
   // Em desenvolvimento, usa pretty-printing (légivel)
   transport:
-    process.env.NODE_ENV === "production"
+    process.env.NODE_ENV === 'production'
       ? undefined
       : {
-          target: "pino-pretty",
+          target: 'pino-pretty',
           options: {
             colorize: true,
-            translateTime: "SYS:standard",
-            ignore: "pid,hostname",
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
           },
         },
 });

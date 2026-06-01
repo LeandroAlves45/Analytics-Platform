@@ -5,7 +5,11 @@
     "sourceType": "script",
     "project": "./tsconfig.json"
   },
-  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "eslint-config-prettier"
+  ],
   "plugins": ["@typescript-eslint", "prettier"],
   "env": {
     "node": true,
@@ -30,13 +34,17 @@
     "no-var": "error",
     "eqeqeq": ["error", "always"],
     "curly": "error",
-    "prettier/prettier": ["warn", { "endOfLine": "auto" }],
-    "max-lines": [
+    "prettier/prettier": [
       "warn",
       {
-        "max": 300,
-        "skipBlankLines": true,
-        "skipComments": true
+        "semi": true,
+        "singleQuote": true,
+        "trailingComma": "es5",
+        "printWidth": 100,
+        "tabWidth": 2,
+        "useTabs": false,
+        "arrowParens": "always",
+        "endOfLine": "auto"
       }
     ]
   }

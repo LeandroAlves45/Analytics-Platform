@@ -1,10 +1,10 @@
 // app.ts
 // Arquivo de configuração do Express
 
-import express, { Express, Request, Response, NextFunction } from "express";
-import { logger } from "../../frameworks/logging";
-import { errorHandlerMiddleware } from "../../middleware/ErrorHandlerMiddleware";
-import { ErrorCodes } from "../../../shared/errors";
+import express, { Express, Request, Response, NextFunction } from 'express';
+import { logger } from '../../frameworks/logging';
+import { errorHandlerMiddleware } from '../../middleware/ErrorHandlerMiddleware';
+import { ErrorCodes } from '../../../shared/errors';
 
 // Interface para request com contexto adicional
 declare global {
@@ -25,8 +25,8 @@ export function createApp(): Express {
 
   // Middlewares: Parsing de Json
   // Converte requesst body em JSON string para objeto JavaScript
-  app.use(express.json({ limit: "10mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Middlewares: Request ID
   // Gera um ID único para cada requisição (rastreamento de logs)
@@ -41,9 +41,9 @@ export function createApp(): Express {
     const startTime = Date.now();
 
     // Hook executado após a resposta ser finalizada
-    res.on("finish", () => {
+    res.on('finish', () => {
       const duration = Date.now() - startTime;
-      logger.info("http_request", {
+      logger.info('http_request', {
         request_id: req.id,
         method: req.method,
         path: req.path,
@@ -59,20 +59,11 @@ export function createApp(): Express {
   // Middlewares: CORS
   // Permite requisições de outros domínios
   app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      process.env.CORS_ORIGIN || "*",
-    );
-    res.setHeader(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS",
-    );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization",
-    );
+    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    if (req.method === "OPTIONS") {
+    if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
 
@@ -82,17 +73,15 @@ export function createApp(): Express {
   // Route: Health check
   // Endpoint para verificar se o servidor está online
   // Usado para monitoramento e load balancers
-  app.get("/health", (_req: Request, res: Response) => {
-    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
   // Route: Readiness check
   // Verifica se o servidor está pronto para receber tráfego
   // Diferente de health, pode estar vivo mas não pronto
-  app.get("/ready", (_req: Request, res: Response) => {
-    res
-      .status(200)
-      .json({ status: "ready", timestamp: new Date().toISOString() });
+  app.get('/ready', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ready', timestamp: new Date().toISOString() });
   });
 
   // Middleware: 404 — rota HTTP não registada (diferente de NotFoundError de domínio)
@@ -100,7 +89,7 @@ export function createApp(): Express {
     res.status(404).json({
       error: {
         code: ErrorCodes.NOT_FOUND,
-        message: "Endpoint does not exist",
+        message: 'Endpoint does not exist',
       },
     });
   });
@@ -117,9 +106,9 @@ export function createApp(): Express {
  */
 export function startServer(app: Express, port: number = 3000): void {
   app.listen(port, () => {
-    logger.info("server_started", {
+    logger.info('server_started', {
       port,
-      environment: process.env.NODE_ENV || "development",
+      environment: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString(),
     });
   });

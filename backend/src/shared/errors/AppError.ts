@@ -3,7 +3,7 @@
 // Classe base para todos os erros da aplicação.
 // Todas as subclasses herdam statusCode, code, isOperational e toJSON().
 
-import { type ErrorCode, type HTTPStatuscode } from "./ErrorCodes";
+import { type ErrorCode, type HTTPStatuscode } from './ErrorCodes';
 
 /** Opções opcionais ao instanciar um AppError. */
 export interface AppErrorOptions {
@@ -50,14 +50,15 @@ export class AppError extends Error {
     message: string,
     code: ErrorCode,
     statusCode: HTTPStatuscode,
-    options: AppErrorOptions = {},
+    options: AppErrorOptions = {}
   ) {
     // super(message, { cause }) exige lib ES2022 no tsconfig.
     // Com lib ES2020, atribuímos cause manualmente após super().
     super(message);
 
     if (options.cause !== undefined) {
-      (this as unknown as { cause: unknown }).cause = options.cause;
+      const self = this as unknown as { cause: unknown };
+      self.cause = options.cause;
     }
 
     this.name = this.constructor.name;
@@ -78,9 +79,7 @@ export class AppError extends Error {
    *
    * @param extra - Campos adicionais dentro de error (ex: { resource, identifier }).
    */
-  protected buildErrorPayload(
-    extra: Record<string, unknown> = {},
-  ): ApiErrorResponseBody {
+  protected buildErrorPayload(extra: Record<string, unknown> = {}): ApiErrorResponseBody {
     return {
       error: {
         code: this.code,

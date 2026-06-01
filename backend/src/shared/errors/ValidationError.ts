@@ -8,8 +8,8 @@
 //   - Use case recebe dados semanticamente inválidos
 //   - Regras de negócio violadas no input (ex: latencyMs negativo)
 
-import { AppError } from "./AppError";
-import { ErrorCodes } from "./ErrorCodes";
+import { AppError } from './AppError';
+import { ErrorCodes } from './ErrorCodes';
 
 /** Detalhe interno de validação — inclui value para logs, nunca exposto na API. */
 export interface ValidationDetails {
@@ -59,11 +59,9 @@ export class ValidationError extends AppError {
    * Serializa o erro incluindo details públicos (sem value) dentro de error.
    * Se não houver details, devolve apenas code e message.
    */
-  toJSON(): ReturnType<AppError["toJSON"]> {
+  toJSON(): ReturnType<AppError['toJSON']> {
     const publicDetails = this.toPublicDetails();
 
-    return this.buildErrorPayload(
-      publicDetails.length > 0 ? { details: publicDetails } : {},
-    );
+    return this.buildErrorPayload(publicDetails.length > 0 ? { details: publicDetails } : {});
   }
 }

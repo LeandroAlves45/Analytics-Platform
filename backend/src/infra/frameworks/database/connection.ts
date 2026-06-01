@@ -7,10 +7,10 @@
 // e vice-versa. Também facilita os testes de integração, onde
 // podemos substituir a ligação por uma de teste.
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import { logger } from "../logging";
-import * as schema from "./schema";
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import { logger } from '../logging';
+import * as schema from './schema';
 
 // Pool de ligação PostgreSQL
 // Um pool mantém várias ligações abertas em simultâneo,
@@ -44,7 +44,7 @@ export function initializeDatabase(databaseUrl: string): Database {
     return db;
   }
 
-  logger.info("database_initializing", { pool_max: POOL_CONFIG.max });
+  logger.info('database_initializing', { pool_max: POOL_CONFIG.max });
 
   // Cria o pool com a DATABASE_URL do ambiente
   pool = new Pool({
@@ -53,8 +53,8 @@ export function initializeDatabase(databaseUrl: string): Database {
   });
 
   // Listener de erros no pool
-  pool.on("error", (error) => {
-    logger.error("database_pool_error", { error: error.message });
+  pool.on('error', (error) => {
+    logger.error('database_pool_error', { error: error.message });
   });
 
   // Cria a instância Drizzle com o pool e o schema.
@@ -62,7 +62,7 @@ export function initializeDatabase(databaseUrl: string): Database {
   // nas queries: db.select().from(schema.users) retorna User[].
   db = drizzle(pool, { schema });
 
-  logger.info("database_initialized");
+  logger.info('database_initialized');
 
   return db;
 }
@@ -71,11 +71,11 @@ export function initializeDatabase(databaseUrl: string): Database {
 // Deve ser chamado no graceful shutdown da aplicação.
 export async function closeDatabaseConnection(): Promise<void> {
   if (pool) {
-    logger.info("database_closing");
+    logger.info('database_closing');
     await pool.end();
     pool = null;
     db = null;
-    logger.info("database_closed");
+    logger.info('database_closed');
   }
 }
 
@@ -89,12 +89,12 @@ export async function checkDatabaseConnection(): Promise<boolean> {
   try {
     // Executa uma query simples para verificar a conexão
     const client = await pool.connect();
-    await client.query("SELECT 1");
+    await client.query('SELECT 1');
     client.release();
     return true;
   } catch (error) {
-    logger.error("database_health_check_failed", {
-      error: error instanceof Error ? error.message : "Unknown",
+    logger.error('database_health_check_failed', {
+      error: error instanceof Error ? error.message : 'Unknown',
     });
     return false;
   }

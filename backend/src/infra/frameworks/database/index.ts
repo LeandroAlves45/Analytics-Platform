@@ -10,7 +10,7 @@ export {
   closeDatabaseConnection,
   checkDatabaseConnection,
   type Database,
-} from "./connection";
+} from './connection';
 
 // Exporta todas as tabelas do schema
 export {
@@ -31,4 +31,4 @@ export {
   // Billing
   usageTracking,
   stripeSubscriptions,
-} from "./schema";
+} from './schema';

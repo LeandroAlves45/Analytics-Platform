@@ -1,20 +1,13 @@
 // Metric.ts
 //
 
-import { ValidationError } from "@shared/errors";
+import { randomUUID } from 'node:crypto';
+import { ValidationError } from '@shared/errors';
 
 // Lista de métodos HTTP válidos que o sistema aceita
 // Definida aqui como constante de domínio porque é uma regra de negócio,
 // não uma regra de HTTP framework.
-const VALID_HTTP_METHODS = [
-  "GET",
-  "POST",
-  "PUT",
-  "DELETE",
-  "PATCH",
-  "OPTIONS",
-  "HEAD",
-] as const;
+const VALID_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'] as const;
 
 // Tipo derivado da constante acima. Permite que o TypeScript valide
 // em tempo de compilação que apenas métodos válidos são usados.
@@ -87,7 +80,7 @@ export class Metric {
     Metric.validate(input);
 
     // Gerar um ID único para a métrica.
-    this.id = crypto.randomUUID();
+    this.id = randomUUID();
     this.workspaceId = input.workspaceId;
     this.apiKeyId = input.apiKeyId;
     this.endpoint = input.endpoint;
@@ -114,32 +107,32 @@ export class Metric {
 
   // Valida campos obrigatórios de string: workspaceId, apiKeyId, requestId
   private static validateRequired(input: CreateMetricInput): void {
-    if (!input.workspaceId || input.workspaceId.trim() === "") {
-      throw new ValidationError("Invalid metric data", [
+    if (!input.workspaceId || input.workspaceId.trim() === '') {
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "workspaceId",
+          field: 'workspaceId',
           value: input.workspaceId,
-          message: "Workspace ID is required",
+          message: 'Workspace ID is required',
         },
       ]);
     }
 
-    if (!input.apiKeyId || input.apiKeyId.trim() === "") {
-      throw new ValidationError("Invalid metric data", [
+    if (!input.apiKeyId || input.apiKeyId.trim() === '') {
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "apiKeyId",
+          field: 'apiKeyId',
           value: input.apiKeyId,
-          message: "API Key ID is required",
+          message: 'API Key ID is required',
         },
       ]);
     }
 
-    if (!input.requestId || input.requestId.trim() === "") {
-      throw new ValidationError("Invalid metric data", [
+    if (!input.requestId || input.requestId.trim() === '') {
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "requestId",
+          field: 'requestId',
           value: input.requestId,
-          message: "Request ID is required",
+          message: 'Request ID is required',
         },
       ]);
     }
@@ -147,12 +140,12 @@ export class Metric {
 
   // Valida endpoint: deve começar com "/" para garantir formato consistente
   private static validateEndpoint(endpoint: string): void {
-    if (!endpoint || endpoint.trim() === "" || !endpoint.startsWith("/")) {
-      throw new ValidationError("Invalid metric data", [
+    if (!endpoint || endpoint.trim() === '' || !endpoint.startsWith('/')) {
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "endpoint",
+          field: 'endpoint',
           value: endpoint,
-          message: "Endpoint must start with /",
+          message: 'Endpoint must start with /',
         },
       ]);
     }
@@ -161,11 +154,11 @@ export class Metric {
   // Valida method HTTP: deve ser um dos métodos válidos
   private static validateHttpMethod(method: string): void {
     if (!VALID_HTTP_METHODS.includes(method as HttpMethod)) {
-      throw new ValidationError("Invalid metric data", [
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "method",
+          field: 'method',
           value: method,
-          message: `Method must be one of: ${VALID_HTTP_METHODS.join(", ")}`,
+          message: `Method must be one of: ${VALID_HTTP_METHODS.join(', ')}`,
         },
       ]);
     }
@@ -174,39 +167,34 @@ export class Metric {
   // Valida métricas numéricas: latencyMs, statusCode, e payloadSizeBytes opcional
   private static validateMetrics(input: CreateMetricInput): void {
     if (!Number.isFinite(input.latencyMs) || input.latencyMs <= 0) {
-      throw new ValidationError("Invalid metric data", [
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "latencyMs",
+          field: 'latencyMs',
           value: input.latencyMs,
-          message: "Latency must be positive",
+          message: 'Latency must be positive',
         },
       ]);
     }
 
-    if (
-      !Number.isInteger(input.statusCode) ||
-      input.statusCode < 100 ||
-      input.statusCode > 599
-    ) {
-      throw new ValidationError("Invalid metric data", [
+    if (!Number.isInteger(input.statusCode) || input.statusCode < 100 || input.statusCode > 599) {
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "statusCode",
+          field: 'statusCode',
           value: input.statusCode,
-          message: "Status code must be between 100 and 599",
+          message: 'Status code must be between 100 and 599',
         },
       ]);
     }
 
     if (
       input.payloadSizeBytes !== undefined &&
-      (typeof input.payloadSizeBytes !== "number" ||
-        input.payloadSizeBytes <= 0)
+      (typeof input.payloadSizeBytes !== 'number' || input.payloadSizeBytes <= 0)
     ) {
-      throw new ValidationError("Invalid metric data", [
+      throw new ValidationError('Invalid metric data', [
         {
-          field: "payloadSizeBytes",
+          field: 'payloadSizeBytes',
           value: input.payloadSizeBytes,
-          message: "Payload size must be positive",
+          message: 'Payload size must be positive',
         },
       ]);
     }
@@ -251,16 +239,16 @@ export class Metric {
    *
    * @returns A família do status code ("2xx" | "3xx" | "4xx" | "5xx")
    */
-  getStatusCodeFamily(): "2xx" | "3xx" | "4xx" | "5xx" {
+  getStatusCodeFamily(): '2xx' | '3xx' | '4xx' | '5xx' {
     if (this.statusCode < 300) {
-      return "2xx";
+      return '2xx';
     }
     if (this.statusCode < 400) {
-      return "3xx";
+      return '3xx';
     }
     if (this.statusCode < 500) {
-      return "4xx";
+      return '4xx';
     }
-    return "5xx";
+    return '5xx';
   }
 }

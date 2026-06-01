@@ -4,9 +4,9 @@
  * Carrega variáveis do arquivo .env
  */
 
-import dotenv from "dotenv";
-import { z } from "zod";
-import { logger } from "./logging";
+import dotenv from 'dotenv';
+import { z } from 'zod';
+import { logger } from './logging';
 
 // Carrega variáveis de ambiente do arquivo .env
 dotenv.config();
@@ -15,14 +15,12 @@ dotenv.config();
 // Define que as variáveis de ambiente são obrigatórias
 const envSchema = z.object({
   // Environment
-  NODE_ENV: z
-    .enum(["development", "production", "test"])
-    .default("development"),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
   // Server
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
   // Database
   DATABASE_HOST: z.string().min(1),
@@ -32,13 +30,13 @@ const envSchema = z.object({
   DATABASE_PASSWORD: z.string().min(1),
 
   // Redis
-  REDIS_HOST: z.string().min(1).default("localhost"),
+  REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().default(6379),
   REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
 
   // JWT
   JWT_SECRET: z.string().min(1),
-  JWT_EXPIRES_IN: z.string().default("24h"),
+  JWT_EXPIRES_IN: z.string().default('24h'),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
@@ -72,47 +70,47 @@ export function loadConfig(): Config {
     const parsed = envSchema.parse(process.env);
 
     // Validação condicional: JWT_SECRET deve em produção ter no mínimo 32 caracteres
-    if (parsed.NODE_ENV === "production") {
+    if (parsed.NODE_ENV === 'production') {
       if (parsed.JWT_SECRET.length < 32) {
-        throw new Error("JWT_SECRET tem que ter no mínimo 32 caracteres");
+        throw new Error('JWT_SECRET tem que ter no mínimo 32 caracteres');
       }
 
       // CORS_ORIGIN não deve ser * em produção
-      if (parsed.CORS_ORIGIN === "*") {
-        throw new Error("CORS_ORIGIN não deve ser * em produção");
+      if (parsed.CORS_ORIGIN === '*') {
+        throw new Error('CORS_ORIGIN não deve ser * em produção');
       }
 
       // Stripe keys devem estar em produção
       if (!parsed.STRIPE_SECRET_KEY || !parsed.STRIPE_WEBHOOK_SECRET) {
         throw new Error(
-          "STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET devem estar configurados em produção",
+          'STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET devem estar configurados em produção'
         );
       }
     }
 
     // Log de sucesso
-    logger.info("config_loaded", {
+    logger.info('config_loaded', {
       environment: parsed.NODE_ENV,
       port: parsed.PORT,
     });
 
     return parsed;
-  } catch (error) {
+  } catch (error: unknown) {
     // Se Zod validation falha, erro é ZodError (estruturado)
     if (error instanceof z.ZodError) {
-      logger.error("config_load_failed", {
-        errors: error.issues.map((err) => ({
-          path: err.path.join("."),
-          message: err.message,
-          received: err.code,
+      logger.error('config_load_failed', {
+        errors: error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+          received: issue.code,
         })),
       });
     } else if (error instanceof Error) {
-      logger.error("config_validation_failed", {
+      logger.error('config_validation_failed', {
         message: error.message,
       });
     } else {
-      logger.error("config_load_failed", { error });
+      logger.error('config_load_failed', { error });
     }
 
     // Exit com erro

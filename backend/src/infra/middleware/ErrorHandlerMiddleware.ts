@@ -8,17 +8,17 @@
 //   2. AppError operacional → statusCode correcto via ErrorPresenter
 //   3. Qualquer outro erro → 500 INTERNAL_SERVER_ERROR
 
-import { Request, Response, NextFunction } from "express";
-import { AppError, ErrorCodes } from "../../shared/errors";
-import { ErrorPresenter } from "../presenters/ErrorPresenter";
-import { logger } from "../frameworks/logging";
+import { Request, Response, NextFunction } from 'express';
+import { AppError, ErrorCodes } from '../../shared/errors';
+import { ErrorPresenter } from '../presenters/ErrorPresenter';
+import { logger } from '../frameworks/logging';
 
 /**
  * Detecta erros de parsing JSON do express.json().
  * O Express lança SyntaxError com propriedade "body" quando o JSON é inválido.
  */
 function isMalformedJsonError(error: Error): boolean {
-  return error instanceof SyntaxError && "body" in error;
+  return error instanceof SyntaxError && 'body' in error;
 }
 
 /**
@@ -34,15 +34,15 @@ export function errorHandlerMiddleware(
   err: Error,
   req: Request,
   res: Response,
-  _next: NextFunction,
+  _next: NextFunction
 ): void {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (isMalformedJsonError(err)) {
     res.status(400).json({
       error: {
         code: ErrorCodes.BAD_REQUEST,
-        message: "Invalid JSON in request body",
+        message: 'Invalid JSON in request body',
       },
     });
     return;
@@ -51,7 +51,7 @@ export function errorHandlerMiddleware(
   if (err instanceof AppError && err.isOperational) {
     const { statusCode, body } = ErrorPresenter.present(err);
 
-    logger.warn("operational_error", {
+    logger.warn('operational_error', {
       request_id: req.id,
       code: err.code,
       status: statusCode,
@@ -62,7 +62,7 @@ export function errorHandlerMiddleware(
     return;
   }
 
-  logger.error("unhandled_error", {
+  logger.error('unhandled_error', {
     request_id: req.id,
     error: err.message,
     stack: err.stack,

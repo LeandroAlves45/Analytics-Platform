@@ -3,7 +3,7 @@
 // Camada de apresentação: converte erros (classes) em respostas HTTP JSON.
 // Separa a lógica de serialização do middleware Express.
 
-import { AppError, ErrorCodes } from "../../shared/errors";
+import { AppError, ErrorCodes } from '../../shared/errors';
 
 /** Formato padrão do body de erro enviado ao cliente. */
 export interface ErrorResponseBody {
@@ -48,7 +48,7 @@ export class ErrorPresenter {
         error: {
           code: ErrorCodes.INTERNAL_SERVER_ERROR,
           message: isProduction
-            ? "An unexpected error occurred. Please try again later."
+            ? 'An unexpected error occurred. Please try again later.'
             : error.message,
         },
       },

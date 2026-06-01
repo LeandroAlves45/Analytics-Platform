@@ -7,8 +7,8 @@
 //   - Utilizador tenta aceder a workspace de outro tenant
 //   - Role insuficiente para a operação (viewer vs admin)
 
-import { AppError } from "./AppError";
-import { ErrorCodes } from "./ErrorCodes";
+import { AppError } from './AppError';
+import { ErrorCodes } from './ErrorCodes';
 
 export class ForbiddenError extends AppError {
   /**
@@ -20,9 +20,7 @@ export class ForbiddenError extends AppError {
    * throw new ForbiddenError();
    * throw new ForbiddenError("Cannot delete resources in this workspace");
    */
-  constructor(
-    message: string = "You do not have permission to access this resource",
-  ) {
+  constructor(message: string = 'You do not have permission to access this resource') {
     super(message, ErrorCodes.FORBIDDEN, 403);
   }
 }

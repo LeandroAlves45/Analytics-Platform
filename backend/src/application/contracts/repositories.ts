@@ -4,7 +4,7 @@
 // de persistência devem cumprir. A camada application conhece apenas
 // estas interfaces — nunca as implementações concretas (Drizzle, Redis, etc).
 
-import { Metric } from "@domain/entities/Metric";
+import { Metric } from '@domain/entities/Metric';
 
 /** */
 /**

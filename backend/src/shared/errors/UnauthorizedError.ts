@@ -5,8 +5,8 @@
 //
 // Para utilizador autenticado sem permissão, usar ForbiddenError (403).
 
-import { AppError } from "./AppError";
-import { ErrorCodes } from "./ErrorCodes";
+import { AppError } from './AppError';
+import { ErrorCodes } from './ErrorCodes';
 
 export class UnauthorizedError extends AppError {
   /**
@@ -18,7 +18,7 @@ export class UnauthorizedError extends AppError {
    * throw new UnauthorizedError();
    * throw new UnauthorizedError("Invalid or expired token");
    */
-  constructor(message: string = "Authentication required") {
+  constructor(message: string = 'Authentication required') {
     super(message, ErrorCodes.UNAUTHORIZED, 401);
   }
 }
