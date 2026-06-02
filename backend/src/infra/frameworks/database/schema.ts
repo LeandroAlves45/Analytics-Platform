@@ -1,13 +1,14 @@
-// src/infra/frameworks/database/schema.ts
-//
-// Schema completo da base de dados definido em TypeScript via Drizzle ORM.
-// As migrations são geradas a partir deste ficheiro com: npm run db:generate
-//
-// Estrutura:
-//   - TIME-SERIES TABLES (4 hypertables TimescaleDB)
-//   - METADATA TABLES (5 tabelas relacionais)
-//   - ALERTING TABLES (2 tabelas)
-//   - BILLING TABLES (2 tabelas)
+/**
+ * Schema completo da base de dados definido em TypeScript via Drizzle ORM.
+ * As migrations são geradas a partir deste ficheiro com: npm run db:generate
+ *
+ * Estrutura:
+ *   - TIME-SERIES TABLES (4 hypertables TimescaleDB)
+ *   - METADATA TABLES (5 tabelas relacionais)
+ *   - IDEMPOTENCY TABLES (1 tabela)
+ *   - ALERTING TABLES (2 tabelas)
+ *   - BILLING TABLES (2 tabelas)
+ */
 
 import {
   pgTable,
@@ -36,12 +37,12 @@ const inet = customType<{ data: string; driverData: string }>({
 // serão convertidas em hypertables TimescaleDB após a migration.
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// metrics_raw
-// Métricas brutas recebidas do SDK. Retenção: 7 dias.
-// Cada linha representa um único request HTTP rastreado.
-// -----------------------------------------------------------------------------
-
+/**
+ * Métricas brutas recebidas do SDK.
+ *
+ * Retenção: 7 dias.
+ * Cada linha representa um único request HTTP rastreado.
+ */
 export const metricsRaw = pgTable(
   'metrics_raw',
   {
@@ -83,7 +84,7 @@ export const metricsRaw = pgTable(
       .default(sql`now()`)
       .notNull(),
   },
-  // Índices para otimzar queries frequentes
+  // Índices para otimizar queries frequentes
   (table) => ({
     // Query principal do dashboard: métricas por workspace ordenadas por tempo
     workspaceTimeIdx: index('metrics_raw_workspace_time_idx').on(table.workspaceId, table.time),
@@ -104,14 +105,26 @@ export const metricsRaw = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// metrics_5min
-// Agregações de 5 minutos calculadas pelo AggregationWorker.
-// Retenção: 90 dias.
-// Cada linha é o resumo estatístico de todos os requests num endpoint
-// durante uma janela de 5 minutos.
-// -----------------------------------------------------------------------------
+/**
+ * Tabela auxiliar de idempotência para métricas.
+ *
+ * Mapeia requestId → timestamp de gravação para garantir que a mesma
+ * métrica não seja processada múltiplas vezes.
+ */
+export const metricIdempotencyKeys = pgTable('metric_idempotency_keys', {
+  requestId: uuid('request_id').primaryKey(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
 
+/**
+ * Agregações de 5 minutos calculadas pelo AggregationWorker.
+ *
+ * Retenção: 90 dias.
+ * Cada linha é o resumo estatístico de todos os requests num endpoint
+ * durante uma janela de 5 minutos.
+ */
 export const metrics5min = pgTable(
   'metrics_5min',
   {
@@ -156,12 +169,12 @@ export const metrics5min = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// metrics_1h
-// Agregações de 1 hora. Retenção: 1 ano.
-// Mesma estrutura que metrics_5min, granularidade diferente.
-// -----------------------------------------------------------------------------
-
+/**
+ * Agregações de 1 hora.
+ *
+ * Retenção: 1 ano.
+ * Mesma estrutura que metrics_5min, granularidade diferente.
+ */
 export const metrics1h = pgTable(
   'metrics_1h',
   {
@@ -199,11 +212,11 @@ export const metrics1h = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// metrics_1d
-// Agregações diárias. Retenção: infinita.
-// -----------------------------------------------------------------------------
-
+/**
+ * Agregações diárias.
+ *
+ * Retenção: infinita.
+ */
 export const metrics1d = pgTable(
   'metrics_1d',
   {
@@ -246,11 +259,9 @@ export const metrics1d = pgTable(
 // Tabelas relacionais para entidades do sistema.
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// users
-// Utilizadores da plataforma (quem faz login no dashboard).
-// -----------------------------------------------------------------------------
-
+/**
+ * Utilizadores da plataforma (quem faz login no dashboard).
+ */
 export const users = pgTable(
   'users',
   {
@@ -290,12 +301,12 @@ export const users = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// workspaces
-// Organização multi-tenant. Cada utilizador pode ter vários workspaces.
-// Um workspace isola completamente os dados de um cliente.
-// -----------------------------------------------------------------------------
-
+/**
+ * Organização multi-tenant.
+ *
+ * Cada utilizador pode ter vários workspaces.
+ * Um workspace isola completamente os dados de um cliente.
+ */
 export const workspaces = pgTable(
   'workspaces',
   {
@@ -339,12 +350,11 @@ export const workspaces = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// api_keys
-// Chaves de autenticação usadas pelo SDK para enviar métricas.
-// NUNCA armazenamos a chave em plaintext - apenas o hash.
-// -----------------------------------------------------------------------------
-
+/**
+ * Chaves de autenticação usadas pelo SDK para enviar métricas.
+ *
+ * NUNCA armazenamos a chave em plaintext — apenas o hash.
+ */
 export const apiKeys = pgTable(
   'api_keys',
   {
@@ -388,12 +398,11 @@ export const apiKeys = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// endpoints
-// Metadata sobre os endpoints que estão a ser rastreados.
-// Criado automaticamente quando uma métrica chega de um endpoint novo.
-// -----------------------------------------------------------------------------
-
+/**
+ * Metadata sobre os endpoints que estão a ser rastreados.
+ *
+ * Criado automaticamente quando uma métrica chega de um endpoint novo.
+ */
 export const endpoints = pgTable(
   'endpoints',
   {
@@ -436,12 +445,11 @@ export const endpoints = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// workspace_members
-// Tabela de junção many-to-many entre users e workspaces.
-// Permite que múltiplos utilizadores acedam ao mesmo workspace com roles diferentes.
-// -----------------------------------------------------------------------------
-
+/**
+ * Tabela de junção many-to-many entre users e workspaces.
+ *
+ * Permite que múltiplos utilizadores acedam ao mesmo workspace com roles diferentes.
+ */
 export const workspaceMembers = pgTable(
   'workspace_members',
   {
@@ -484,12 +492,12 @@ export const workspaceMembers = pgTable(
 // ALERTING TABLES
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// alert_rules
-// Regras definidas pelo utilizador para disparar alertas.
-// Ex: "Se p95 > 500ms durante 5 minutos, notifica no Slack"
-// -----------------------------------------------------------------------------
-
+/**
+ * Regras definidas pelo utilizador para disparar alertas.
+ *
+ * @example
+ * "Se p95 > 500ms durante 5 minutos, notifica no Slack"
+ */
 export const alertRules = pgTable(
   'alert_rules',
   {
@@ -544,12 +552,11 @@ export const alertRules = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// alert_events
-// Log de cada vez que uma regra de alerta foi disparada.
-// Permite ver histórico, duração e estado de resolução.
-// -----------------------------------------------------------------------------
-
+/**
+ * Log de cada vez que uma regra de alerta foi disparada.
+ *
+ * Permite ver histórico, duração e estado de resolução.
+ */
 export const alertEvents = pgTable(
   'alert_events',
   {
@@ -607,12 +614,11 @@ export const alertEvents = pgTable(
 // BILLING TABLES
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// usage_tracking
-// Contagem mensal de requests rastreados por workspace.
-// Usada para billing baseado em consumo.
-// -----------------------------------------------------------------------------
-
+/**
+ * Contagem mensal de requests rastreados por workspace.
+ *
+ * Usada para billing baseado em consumo.
+ */
 export const usageTracking = pgTable(
   'usage_tracking',
   {
@@ -647,12 +653,11 @@ export const usageTracking = pgTable(
   })
 );
 
-// -----------------------------------------------------------------------------
-// stripe_subscriptions
-// Estado da subscrição Stripe de cada workspace.
-// TODO:Atualizado via Stripe webhooks.
-// -----------------------------------------------------------------------------
-
+/**
+ * Estado da subscrição Stripe de cada workspace.
+ *
+ * TODO: Atualizado via Stripe webhooks.
+ */
 export const stripeSubscriptions = pgTable(
   'stripe_subscriptions',
   {

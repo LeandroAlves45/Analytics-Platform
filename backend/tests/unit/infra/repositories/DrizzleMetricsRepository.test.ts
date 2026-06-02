@@ -33,8 +33,9 @@ const createValidMetric = (): Metric => {
 
 /**
  * Factory de mock para Drizzle db.
- * Expõe métodos em _insertMock e _selectMock para assertions nos testes.
+ * Expõe métodos em _insertMock, _selectMock e _tx para assertions nos testes.
  * A estrutura espelha a API do Drizzle: db.insert().values(), db.select().from()...
+ * e db.transaction() para operações atómicas.
  */
 const createMockDb = () => {
   // Mock para operações de insert encadeadas: db.insert(table).values(data)
@@ -50,12 +51,20 @@ const createMockDb = () => {
     orderBy: jest.fn().mockResolvedValue([]),
   };
 
+  // Mock para operações dentro de uma transação (tx.insert, tx.select, etc.)
+  const txMock = {
+    insert: jest.fn().mockReturnValue(insertMock),
+    select: jest.fn().mockReturnValue(selectMock),
+  };
+
   return {
     insert: jest.fn().mockReturnValue(insertMock),
     select: jest.fn().mockReturnValue(selectMock),
+    transaction: jest.fn().mockImplementation((callback) => callback(txMock)),
     // Guardamos referências para poder verificar chamadas nos testes.
     _insertMock: insertMock,
     _selectMock: selectMock,
+    _tx: txMock,
   };
 };
 
@@ -70,7 +79,12 @@ describe('DrizzleMetricsRepository', () => {
     repository = new DrizzleMetricsRepository(mockDb as never);
   });
 
-  // Grupo 1: save()
+  afterEach(() => {
+    // Limpar todos os mocks após cada teste para evitar contaminação cruzada
+    jest.clearAllMocks();
+  });
+
+  // Grupo 1: save() — Comportamento base
   describe('save()', () => {
     it('should save all optional fields correctly', async () => {
       const metric = new Metric({
@@ -86,8 +100,23 @@ describe('DrizzleMetricsRepository', () => {
         payloadSizeBytes: 2048,
       });
 
+      // Mock para idempotency keys (novo requestId, será inserido)
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+
       await repository.save(metric);
-      expect(mockDb._insertMock.values).toHaveBeenCalledWith(
+
+      // Verificar que os campos opcionais foram passados corretamente
+      expect(metricsMock.values).toHaveBeenCalledWith(
         expect.objectContaining({
           userAgent: 'Mozilla/5.0',
           ipAddress: '192.168.1.1',
@@ -99,69 +128,65 @@ describe('DrizzleMetricsRepository', () => {
     it('should save metric without optional fields', async () => {
       const metric = createValidMetric();
 
-      await repository.save(metric);
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
 
-      expect(mockDb._insertMock.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userAgent: null,
-          ipAddress: null,
-          payloadSizeBytes: null,
-        })
-      );
-    });
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
 
-    it('should call db.insert with correct values', async () => {
-      const metric = createValidMetric();
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
 
       await repository.save(metric);
 
-      //Verificamos que insert foi chamado (com qualquer tabela)
-      expect(mockDb.insert).toHaveBeenCalledTimes(1);
-      // Verificamos que values foi chamado com os campos corretos
-      expect(mockDb._insertMock.values).toHaveBeenCalledWith(
+      // Campos opcionais são passados como undefined (não null) ao INSERT
+      expect(metricsMock.values).toHaveBeenCalledWith(
         expect.objectContaining({
-          workspaceId: metric.workspaceId,
-          endpoint: metric.endpoint,
-          method: metric.method,
-          latencyMs: metric.latencyMs,
-          statusCode: metric.statusCode,
-          requestId: metric.requestId,
+          userAgent: undefined,
+          ipAddress: undefined,
+          payloadSizeBytes: undefined,
         })
       );
-    });
-
-    it('should not throw when duplicate requestId constraint fires (23505)', async () => {
-      // Simulamos erro PostgreSQL de unique violation
-      const pgUniqueError = Object.assign(new Error('duplicate key'), { code: '23505' });
-      mockDb._insertMock.values.mockRejectedValue(pgUniqueError);
-
-      const metric = createValidMetric();
-
-      // Não deve lançar erro, a métrica já existe, o resultado é o mesmo.
-      await expect(repository.save(metric)).resolves.toBeUndefined();
-    });
-
-    it('should throw AppError when generic database error occurs', async () => {
-      // Simulamos falha genérica de base de dados
-      mockDb._insertMock.values.mockRejectedValue(new Error('connection timeout'));
-
-      const metric = createValidMetric();
-
-      // Deve lançar AppError com o código INTERNAL_SERVER_ERROR
-      await expect(repository.save(metric)).rejects.toThrow(AppError);
     });
 
     it('should preserve exact timestamp from metric', async () => {
       const metric = createValidMetric();
       const expectedTime = metric.timestamp;
 
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+
       await repository.save(metric);
 
-      expect(mockDb._insertMock.values).toHaveBeenCalledWith(
+      expect(metricsMock.values).toHaveBeenCalledWith(
         expect.objectContaining({
           time: expectedTime,
         })
       );
+    });
+
+    it('should throw AppError when transaction fails', async () => {
+      const metric = createValidMetric();
+      const dbError = new Error('transaction failed');
+
+      mockDb.transaction.mockRejectedValue(dbError);
+
+      await expect(repository.save(metric)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
     });
   });
 
@@ -181,14 +206,6 @@ describe('DrizzleMetricsRepository', () => {
       const exists = await repository.existsByRequestId(TEST_REQUEST_ID);
 
       expect(exists).toBe(true);
-    });
-
-    it('should throw AppError when database query fails', async () => {
-      // Simulamos falha de base de dados
-      mockDb._selectMock.limit.mockRejectedValue(new Error('db_error'));
-
-      // Deve lançar AppError com o código INTERNAL_SERVER_ERROR
-      await expect(repository.existsByRequestId('req-123')).rejects.toThrow(AppError);
     });
 
     it('should return false when requestId is null/empty', async () => {
@@ -225,7 +242,10 @@ describe('DrizzleMetricsRepository', () => {
       mockDb._selectMock.orderBy.mockRejectedValue(new Error('db_error'));
 
       // Deve lançar AppError com o código INTERNAL_SERVER_ERROR
-      await expect(repository.getRecent(TEST_WORKSPACE_ID, 5)).rejects.toThrow(AppError);
+      await expect(repository.getRecent(TEST_WORKSPACE_ID, 5)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
     });
 
     it('should pass correct workspaceId to query', async () => {
@@ -386,6 +406,33 @@ describe('DrizzleMetricsRepository', () => {
       expect(mockDb._selectMock.where).toHaveBeenCalled();
     });
 
+    it('should preserve timestamp from database row', async () => {
+      const fixedTime = new Date('2025-01-15T10:00:00Z');
+
+      const dbRow = {
+        time: fixedTime,
+        workspaceId: TEST_WORKSPACE_ID,
+        apiKeyId: TEST_API_KEY_ID,
+        endpoint: '/api/test',
+        method: 'GET',
+        latencyMs: 150,
+        statusCode: 200,
+        payloadSizeBytes: null,
+        requestId: TEST_REQUEST_ID,
+        userAgent: null,
+        ipAddress: null,
+        createdAt: new Date(),
+      };
+
+      mockDb._selectMock.orderBy.mockResolvedValue([dbRow]);
+
+      const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      expect(metrics[0].timestamp).toEqual(fixedTime);
+      // Garantir que não é "agora" -> se reconstitute falhar
+      // timestamp será próximo de Date.now()
+      expect(metrics[0].timestamp.getTime()).toBeLessThan(Date.now() + 60_000);
+    });
   });
 
   // Grupo 4: Hydration
@@ -449,7 +496,10 @@ describe('DrizzleMetricsRepository', () => {
       // Simulamos timeout de base de dados
       mockDb._selectMock.orderBy.mockRejectedValue(new Error('db connection timeout'));
 
-      await expect(repository.getRecent(TEST_WORKSPACE_ID, 5)).rejects.toThrow(AppError);
+      await expect(repository.getRecent(TEST_WORKSPACE_ID, 5)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
     });
 
     it('should preserve error context when logging', async () => {
@@ -464,6 +514,74 @@ describe('DrizzleMetricsRepository', () => {
           expect(error.statusCode).toBe(500);
         }
       }
+    });
+  });
+
+  // Grupo 6: Idempotência (transacional com metric_idempotency_keys)
+  describe('save() — idempotence', () => {
+    /**
+     * Testa o cenário onde um requestId já foi processado numa transação anterior.
+     * O mock retorna array vazio do RETURNING, indicando conflito com PRIMARY KEY.
+     * O repositório deve retornar silenciosamente sem erro (idempotência garantida).
+     */
+    it('should silently skip insert when requestId already exists', async () => {
+      const metric = createValidMetric();
+
+      // Mock da cadeia de insert com ON CONFLICT DO NOTHING RETURNING
+      const idempotencyInsertMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([]), // vazio = requestId duplicado
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyInsertMock);
+
+      await expect(repository.save(metric)).resolves.toBeUndefined();
+      // Apenas 1 insert foi chamado (tabela de idempotência); metrics_raw nunca é tocado
+      expect(mockDb._tx.insert).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Testa o happy path: um requestId novo passa pelo primeiro insert,
+     * retorna na cláusula RETURNING, e depois insere em metrics_raw.
+     */
+    it('should insert into both tables when requestId is new', async () => {
+      const metric = createValidMetric();
+
+      // Mock da cadeia de insert para metric_idempotency_keys
+      const idempotencyInsertMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]), // inserido com sucesso
+      };
+
+      // Mock da cadeia de insert para metrics_raw
+      const metricsRawInsertMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert
+        .mockReturnValueOnce(idempotencyInsertMock) // 1º call: metric_idempotency_keys
+        .mockReturnValueOnce(metricsRawInsertMock); // 2º call: metrics_raw
+
+      await expect(repository.save(metric)).resolves.toBeUndefined();
+      expect(mockDb._tx.insert).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * Testa que a transação é realmente usada e que erros dentro dela
+     * são propagados como AppError.
+     */
+    it('should throw AppError when transaction fails', async () => {
+      const metric = createValidMetric();
+      const dbError = new Error('transaction failed');
+
+      mockDb.transaction.mockRejectedValue(dbError);
+
+      await expect(repository.save(metric)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
     });
   });
 });

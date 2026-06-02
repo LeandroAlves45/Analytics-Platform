@@ -1,15 +1,15 @@
-// RecordMetricUseCase.ts
-//
-// O use case orquestra o fluxo de negócio: recebe dados externos,
-// cria a entidade de domínio e coordena os serviços necessários.
-//
-// O que este use case faz, por ordem:
-// 1. Verifica se o request já foi processado (idempotência)
-// 2. Cria a entidade Metric (validações de domínio executadas aqui)
-// 3. Persiste a métrica
-// 4. Invalida cache do dashboard
-// 5. Agenda worker de agregação
-// 6. Devolve confirmação ao controller
+/**
+ * O use case orquestra o fluxo de negócio: recebe dados externos,
+ * cria a entidade de domínio e coordena os serviços necessários.
+ *
+ * O que este use case faz, por ordem:
+ * 1. Verifica se o request já foi processado (idempotência)
+ * 2. Cria a entidade Metric (validações de domínio executadas aqui)
+ * 3. Persiste a métrica
+ * 4. Invalida cache do dashboard
+ * 5. Agenda worker de agregação
+ * 6. Devolve confirmação ao controller
+ */
 
 import { Metric } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors';
@@ -36,9 +36,7 @@ export class RecordMetricUseCase {
 
   async execute(input: RecordMetricInputDTO): Promise<RecordMetricOutputDTO> {
     // Passo 1: verificar idempotência.
-    // Se este requestId já foi processado, devolvemos sucesso sem duplicar.
-    // Isto protege contra retries do SDK que possam enviar o mesmo request
-    // mais do que uma vez.
+    // Duplicado explícito detectado antes do save, retorna HTTP 409 CONFLICT ao chamador
     const alreadyExists = await this.metricsRepository.existsByRequestId(input.requestId);
 
     if (alreadyExists) {
@@ -79,6 +77,14 @@ export class RecordMetricUseCase {
         workspaceId: input.workspaceId,
         error,
       });
+
+      // Re-throw AppErrors sem embrulhar: preserva code, statusCode e referência original.
+      // Erros genéricos (ex: falhas de rede inesperadas)
+      // continuam a ser normalizados para 500.
+      if (error instanceof AppError) {
+        throw error;
+      }
+
       throw new AppError('Failed to record metric', 'INTERNAL_SERVER_ERROR', 500, {
         cause: error as Error,
       });

@@ -1,17 +1,17 @@
-// DrizzleMetricsRepository.ts
-//
-// Implementação concreta do contrato MetricsRepository usando Drizzle ORM.
-// Esta classe é o único sítio em todo o sistema que sabe como as métricas
-// são fisicamente guardadas no PostgreSQL com TimescaleDB.
+/**
+ * Implementação concreta do contrato MetricsRepository usando Drizzle ORM.
+ * Esta classe é o único sítio em todo o sistema que sabe como as métricas
+ * são fisicamente guardadas no PostgreSQL com TimescaleDB.
+ */
 
 import { eq, gte, and } from 'drizzle-orm';
 import type { Database } from '@infra/frameworks/database';
 
-import { Metric } from '@domain/entities/Metric';
+import { Metric, type HttpMethod } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors/AppError';
 import { logger } from '@infra/frameworks/logging';
 import { MetricsRepository } from '@application/contracts/repositories';
-import { metricsRaw } from '@infra/frameworks/database/schema';
+import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/schema';
 
 /**
  * Implementação concreta do contrato MetricsRepository usando Drizzle ORM.
@@ -19,75 +19,96 @@ import { metricsRaw } from '@infra/frameworks/database/schema';
  * são fisicamente guardadas no PostgreSQL com TimescaleDB.
  *
  * @implements {MetricsRepository}
- * @param {PostgresJsDatabase} db - A instância do banco de dados Drizzle.
+ * @param {Database} db - Drizzle ORM Database instance.
  */
 export class DrizzleMetricsRepository implements MetricsRepository {
   // Recebemos a instância da base de dados por injecção de dependências.
   constructor(private readonly db: Database) {}
 
-  // Persiste uma métrica na tabela metrics_raw.
-  // Se o requestId já existir (UNIQUE constraint), a base de dados lança erro
-  // que é interceptado e tratado aqui como caso especial.
+  /**
+   * Persiste uma métrica de forma idempotente usando transação atómica.
+   *
+   * Executa dois passos atómicos dentro de uma transação:
+   * 1. `INSERT INTO metric_idempotency_keys (request_id) ON CONFLICT DO NOTHING RETURNING request_id`
+   *    → Se `RETURNING` vier vazio: requestId já foi processado, retorna silenciosamente (idempotência)
+   *    → Se `RETURNING` vier com a linha: novo requestId, prossegue para passo 2
+   * 2. Se novo requestId: `INSERT INTO metrics_raw (...)` com todos os dados da métrica
+   *
+   * O `PRIMARY KEY` em `metric_idempotency_keys` actua como mutex distribuído,
+   * garantindo que mesmo sob race conditions concorrentes, apenas uma métrica por
+   * requestId é armazenada.
+   *
+   * @param metric - Instância de `Metric` válida a persistir
+   * @throws {AppError} Com `code: 'INTERNAL_SERVER_ERROR'` em falha de BD inesperada
+   * @returns Promise que resolve sem retorno (void)
+   */
   async save(metric: Metric): Promise<void> {
     try {
-      await this.db.insert(metricsRaw).values({
-        // A coluna 'time' é a dimensão temporal da hypertable TimescaleDB.
-        // Usamos o timestamp da entidade para preservar o momento exacto da medição.
-        time: metric.timestamp,
-        workspaceId: metric.workspaceId,
-        apiKeyId: metric.apiKeyId,
-        endpoint: metric.endpoint,
-        method: metric.method,
-        latencyMs: metric.latencyMs,
-        statusCode: metric.statusCode,
-        payloadSizeBytes: metric.payloadSizeBytes,
-        requestId: metric.requestId,
-        userAgent: metric.userAgent,
-        ipAddress: metric.ipAddress,
-      });
+      await this.db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(metricIdempotencyKeys)
+          .values({ requestId: metric.requestId })
+          .onConflictDoNothing()
+          .returning({ requestId: metricIdempotencyKeys.requestId });
 
-      logger.debug('metric_saved_to_db', {
-        metric_id: metric.id,
-        workspace_id: metric.workspaceId,
-        request_id: metric.requestId,
+        if (inserted.length === 0) {
+          // requestId já registado numa transação anterior -> idempotência garantida
+          logger.warn('metric_duplicate_ignored', { request_id: metric.requestId });
+          return;
+        }
+
+        await tx.insert(metricsRaw).values({
+          time: metric.timestamp,
+          workspaceId: metric.workspaceId,
+          apiKeyId: metric.apiKeyId,
+          endpoint: metric.endpoint,
+          method: metric.method,
+          latencyMs: metric.latencyMs,
+          statusCode: metric.statusCode,
+          payloadSizeBytes: metric.payloadSizeBytes ?? undefined,
+          requestId: metric.requestId,
+          userAgent: metric.userAgent ?? undefined,
+          ipAddress: metric.ipAddress ?? undefined,
+        });
       });
     } catch (error) {
-      // Detectamos violação de UNIQUE constraint no requestId.
-      const pgError = error as { code?: string };
-      if (pgError.code === '23505') {
-        logger.warn('metric_duplicate_request_id', {
-          request_id: metric.requestId,
-          workspace_id: metric.workspaceId,
-        });
-        // Não lançamos erro, a métrica já existe, o resultado é o mesmo.
-        return;
-      }
-
-      // Qualquer outro erro de base de dados é crítico
-      logger.error('metric_db_insert_failed', {
+      logger.error('metric_save_failed', {
         request_id: metric.requestId,
         workspace_id: metric.workspaceId,
         error,
       });
-
       throw new AppError('Failed to save metric', 'INTERNAL_SERVER_ERROR', 500, {
         cause: error as Error,
       });
     }
   }
 
-  // Verifica se uma métrica com este requestId já foi guardada.
-  // Usado pelo use case para garantir idempotência antes de tentar o insert.
-  // A query usa o índice UNIQUE em request_id, portanto é O(log n).
+  /**
+   * Verifica se um `requestId` já foi processado.
+   *
+   * Consulta `metric_idempotency_keys` (tabela normal, não hypertable) usando o PRIMARY KEY.
+   * O lookup é O(1) — extremamente eficiente comparado a varrer a hypertable `metrics_raw`
+   * que pode ter milhões de linhas com retenção de 7 dias.
+   *
+   * **Nota sobre race conditions:**
+   * Este método é usado como guarda no `RecordMetricUseCase` antes de chamar `save()`.
+   * Dois pedidos concorrentes com o mesmo `requestId` podem ambos passar este check
+   * antes de qualquer um chamar `save()`. A verdadeira proteção de idempotência
+   * ocorre dentro de `save()` no PRIMARY KEY em transação.
+   *
+   * @param requestId - UUID do pedido a verificar
+   * @returns `true` se já foi registado em `metric_idempotency_keys`, `false` caso contrário
+   * @throws {AppError} Com `code: 'INTERNAL_SERVER_ERROR'` em falha de BD
+   */
   async existsByRequestId(requestId: string): Promise<boolean> {
     try {
       const result = await this.db
         .select({
           // Seleccionamos apenas requestId para minimizar dados transferidos.
-          requestId: metricsRaw.requestId,
+          requestId: metricIdempotencyKeys.requestId,
         })
-        .from(metricsRaw)
-        .where(eq(metricsRaw.requestId, requestId))
+        .from(metricIdempotencyKeys)
+        .where(eq(metricIdempotencyKeys.requestId, requestId))
         .limit(1);
 
       return result.length > 0;
@@ -129,40 +150,35 @@ export class DrizzleMetricsRepository implements MetricsRepository {
   }
 
   // Converte uma linha da base de dados numa entidade Metric válida.
-  // Valida integridade dos dados antes de construir a entity.
+  // Delegação de validação: todas as regras de domínio (UUID format, HTTP method validity,
+  // latency/statusCode ranges) são orquestradas por Metric.validate() no constructor.
+  // hydrateMetric só é responsável por hydration + logs, não por re-validação.
   private hydrateMetric(row: typeof metricsRaw.$inferSelect): Metric {
-    // Validação defensiva: se dados críticos estão corrompidos no banco,
-    // falha rápido e com mensagem clara (não deixa validação silenciosa do Metric)
-    if (!row.workspaceId || !row.apiKeyId || !row.requestId) {
-      logger.error('corrupted_metric_row', {
+    try {
+      return Metric.reconstitute({
+        workspaceId: row.workspaceId,
+        apiKeyId: row.apiKeyId,
+        endpoint: row.endpoint,
+        method: row.method as HttpMethod,
+        latencyMs: row.latencyMs,
+        statusCode: row.statusCode,
+        payloadSizeBytes: row.payloadSizeBytes ?? undefined,
+        requestId: row.requestId,
+        userAgent: row.userAgent ?? undefined,
+        ipAddress: row.ipAddress ?? undefined,
+        timestamp: row.time,
+      });
+    } catch (error) {
+      // Se dados da BD violam invariantes de domínio, log e re-throw
+      // Isto é exceção rara (data corruption) — não deve acontecer em produção.
+      logger.error('corrupted_metric_row_in_db', {
+        request_id: row.requestId,
         workspace_id: row.workspaceId,
-        api_key_id: row.apiKeyId,
-        request_id: row.requestId,
+        error: error instanceof Error ? error.message : 'unknown',
       });
-      throw new AppError('Corrupted metric data in database', 'INTERNAL_SERVER_ERROR', 500);
-    }
-
-    if (!Number.isFinite(row.latencyMs)) {
-      logger.error('invalid_latency_in_db', {
-        request_id: row.requestId,
-        latency_value: row.latencyMs,
+      throw new AppError('Corrupted metric data in database', 'INTERNAL_SERVER_ERROR', 500, {
+        cause: error as Error,
       });
-      throw new AppError('Invalid latency in database record', 'INTERNAL_SERVER_ERROR', 500);
     }
-
-    const metric = new Metric({
-      workspaceId: row.workspaceId,
-      apiKeyId: row.apiKeyId,
-      endpoint: row.endpoint,
-      method: row.method,
-      latencyMs: row.latencyMs,
-      statusCode: row.statusCode,
-      payloadSizeBytes: row.payloadSizeBytes ?? undefined,
-      requestId: row.requestId,
-      userAgent: row.userAgent ?? undefined,
-      ipAddress: row.ipAddress ?? undefined,
-    });
-
-    return metric;
   }
 }

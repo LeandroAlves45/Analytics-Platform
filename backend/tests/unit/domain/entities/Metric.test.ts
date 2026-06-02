@@ -1,17 +1,20 @@
-// Metric.test.ts
-//
-// Testes unitários para a entidade Metric.
+/**
+ * Testes unitários para a entidade Metric.
+ *
+ * Cobre:
+ * - Criação e atribuição de campos (obrigatórios e opcionais)
+ * - Validações de regras de negócio (UUIDs, ranges numéricos, formatos)
+ * - Métodos de domínio (isError, isSlow, isServerError, getStatusCodeFamily)
+ */
 
 import { Metric } from '@domain/entities/Metric';
 import { ValidationError } from '@shared/errors';
-import { BASE_METRIC_INPUT } from '../../../fixtures/metrics';
+import { BASE_METRIC_INPUT, createUniqueRequestId } from '../../../fixtures/metrics';
 
-// Fixture reutilizável de fixtures para testes.
 const validInput = { ...BASE_METRIC_INPUT };
 
-// Testes
 describe('Metric Entity', () => {
-  // Grupo 1: criaçção bem sucedida
+  // Grupo 1: criação bem sucedida
   describe('constructor - valid input', () => {
     it('should create a metric with all required fields', () => {
       const metric = new Metric(validInput);
@@ -30,7 +33,7 @@ describe('Metric Entity', () => {
       const metric1 = new Metric(validInput);
       const metric2 = new Metric({
         ...validInput,
-        requestId: 'another-req-id',
+        requestId: createUniqueRequestId(),
       });
 
       // Dois objetos criados devem ter IDs diferentes
@@ -70,8 +73,9 @@ describe('Metric Entity', () => {
     });
   });
 
-  // Grupo 2: validações de campos obrigatórios
+  // Grupo 2: validações de campos obrigatórios e formato UUID
   describe('constructor - validation errors', () => {
+    // Validação de formato UUID (RFC 4122) — garante que IDs são válidos para BD
     it('should throw ValidationError when workspaceId is empty', () => {
       expect(() => new Metric({ ...validInput, workspaceId: '' })).toThrow(ValidationError);
     });
@@ -117,14 +121,64 @@ describe('Metric Entity', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError);
         const validationError = error as ValidationError;
-        // Verificar que o erro contém detalhes utéis para o cliente da API
+        // Verificar que o erro contém detalhes úteis para o cliente da API
         expect(validationError.message).toContain('Invalid metric data');
       }
     });
+
+    it('should throw ValidationError when workspaceId is not a valid UUID', () => {
+      expect(
+        () =>
+          new Metric({
+            ...validInput,
+            workspaceId: 'ws-123',
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it('should throw ValidationError when workspaceId has UUID-like value with prefix', () => {
+      expect(
+        () =>
+          new Metric({
+            ...validInput,
+            workspaceId: 'ws-550e8400-e29b-41d4-a716-446655440000',
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it('should throw ValidationError when apiKeyId is not a valid UUID', () => {
+      expect(
+        () =>
+          new Metric({
+            ...validInput,
+            apiKeyId: 'key-123',
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it('should throw ValidationError when requestId is not a valid UUID', () => {
+      expect(
+        () =>
+          new Metric({
+            ...validInput,
+            requestId: 'req-123',
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it('should accept valid UUIDs for all identifier fields', () => {
+      // Deve criar a métrica sem lançar erro quando todos os UUIDs são válidos
+      const metric = new Metric(validInput);
+
+      expect(metric.workspaceId).toBe(validInput.workspaceId);
+      expect(metric.apiKeyId).toBe(validInput.apiKeyId);
+      expect(metric.requestId).toBe(validInput.requestId);
+    });
   });
 
-  // Grupo 3: métodos de domínio
+  // Grupo 3: métodos de domínio — análise de status HTTP
   describe('isError()', () => {
+    // Determina se um request resultou num erro (4xx ou 5xx)
     it('should return false for 2xx status codes', () => {
       const metric = new Metric({ ...validInput, statusCode: 200 });
       expect(metric.isError()).toBe(false);
@@ -147,6 +201,7 @@ describe('Metric Entity', () => {
   });
 
   describe('isSlow()', () => {
+    // Determina se um request excedeu o limite de latência (SLA configurável)
     it('should return false when latency below threshold', () => {
       const metric = new Metric({ ...validInput, latencyMs: 100 });
       expect(metric.isSlow(500)).toBe(false);
@@ -164,6 +219,7 @@ describe('Metric Entity', () => {
   });
 
   describe('isServerError()', () => {
+    // Distingue erros do servidor (5xx) de erros do cliente (4xx)
     it('should return false for 4xx', () => {
       const metric = new Metric({ ...validInput, statusCode: 400 });
       expect(metric.isServerError()).toBe(false);
@@ -176,6 +232,7 @@ describe('Metric Entity', () => {
   });
 
   describe('getStatusCodeFamily()', () => {
+    // Classifica status codes por família (2xx, 3xx, 4xx, 5xx) para agregações
     it('should return 2xx for 200', () => {
       const metric = new Metric({ ...validInput, statusCode: 200 });
       expect(metric.getStatusCodeFamily()).toBe('2xx');

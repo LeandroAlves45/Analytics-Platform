@@ -1,8 +1,8 @@
-// RecordMetricUseCase.test.ts
-//
-// Testes unitários do use case.
-// Usamos mocks para todas as dependências — sem base de dados, sem Redis, sem filas.
-// O objectivo é testar APENAS a lógica de orquestração do use case.
+/**
+ * Testes unitários do use case.
+ * Usamos mocks para todas as dependências sem base de dados, sem Redis, sem filas.
+ * O objectivo é testar APENAS a lógica de orquestração do use case.
+ */
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import {
@@ -123,40 +123,13 @@ describe('RecordMetricUseCase', () => {
       await expect(useCase.execute(validInput)).rejects.toThrow(AppError);
     });
 
-    it('should not save metric when requestId already exists', async () => {
-      // Arrange: simulamos que este requestId já foi processado.
+    it('should throw 409 CONFLICT with correct code for duplicate requestId', async () => {
       metricsRepository.existsByRequestId.mockResolvedValue(true);
 
-      try {
-        await useCase.execute(validInput);
-      } catch (error) {
-        // Ignoramos o erro -> só queremos verificar que não foi salvo.
-      }
-
-      // Assert: verificamos que o repositório não foi chamado.
-      expect(metricsRepository.save).not.toHaveBeenCalled();
-    });
-
-    it('should throw AppError with statusCode 409', async () => {
-      // Arrange: simulamos requestId já existente.
-      metricsRepository.existsByRequestId.mockResolvedValue(true);
-
-      try {
-        await useCase.execute(validInput);
-      } catch (error) {
-        expect((error as AppError).statusCode).toBe(409);
-      }
-    });
-
-    it('should throw AppError with CONFLICT code', async () => {
-      // Arrange: simulamos requestId já existente.
-      metricsRepository.existsByRequestId.mockResolvedValue(true);
-
-      try {
-        await useCase.execute(validInput);
-      } catch (error) {
-        expect((error as AppError).code).toBe('CONFLICT');
-      }
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'CONFLICT',
+      });
     });
   });
 
@@ -183,15 +156,12 @@ describe('RecordMetricUseCase', () => {
       );
     });
 
-    it('should not save metric when domain validation fails', async () => {
-      // Arrange: input com validações de domínio inválidas.
-      try {
-        await useCase.execute({ ...validInput, latencyMs: -1 });
-      } catch {
-        // ignoramos o erro
-      }
+    it('should not save metric when validation fails', async () => {
+      await expect(useCase.execute({ ...validInput, latencyMs: -1 })).rejects.toThrow(
+        ValidationError
+      );
 
-      // Assert: verificamos que o repositório não foi chamado.
+      // Garantir que o repositório não foi chamado.
       expect(metricsRepository.save).not.toHaveBeenCalled();
     });
   });
@@ -229,21 +199,18 @@ describe('RecordMetricUseCase', () => {
     it('should throw AppError with statusCode 500 when repository save fails', async () => {
       metricsRepository.save.mockRejectedValue(new Error('Database connection lost'));
 
-      try {
-        await useCase.execute(validInput);
-      } catch (error) {
-        expect((error as AppError).statusCode).toBe(500);
-      }
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
     });
 
-    it('should throw AppError with INTERNAL_SERVER_ERROR code when repository save fails', async () => {
-      metricsRepository.save.mockRejectedValue(new Error('Database connection lost'));
+    it('should rethrow AppError from repository without wrapping', async () => {
+      const repoError = new AppError('Failed to save metric', 'INTERNAL_SERVER_ERROR', 500);
 
-      try {
-        await useCase.execute(validInput);
-      } catch (error) {
-        expect((error as AppError).code).toBe('INTERNAL_SERVER_ERROR');
-      }
+      metricsRepository.save.mockRejectedValue(repoError);
+
+      await expect(useCase.execute(validInput)).rejects.toThrow(repoError);
     });
   });
 });
