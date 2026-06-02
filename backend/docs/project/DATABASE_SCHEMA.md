@@ -2,7 +2,7 @@
 
 ## Complete Analytics SaaS Database Schema
 
-Total: 11 tables (3 hypertables time-series, 8 relational)
+Total: 12 tables (3 hypertables time-series, 9 relational)
 
 ---
 
@@ -23,7 +23,7 @@ CREATE TABLE metrics_raw (
   latency_ms FLOAT NOT NULL,
   status_code INT NOT NULL,
   payload_size_bytes INT,
-  request_id UUID NOT NULL UNIQUE,
+  request_id UUID NOT NULL,
   user_agent VARCHAR,
   ip_address INET,
   
@@ -43,7 +43,11 @@ CREATE INDEX ON metrics_raw (status_code, time DESC);
 - `workspace_id` for tenant isolation
 - `endpoint` + `method` for grouping
 - Indexes on common queries
-- `request_id` for idempotency checks
+- `request_id` for data tracing — idempotency is enforced via `metric_idempotency_keys` (see below)
+
+**UNIQUE constraint:** `UNIQUE(request_id, time)` — TimescaleDB requires the partition column
+(`time`) to be included in any UNIQUE constraint on a hypertable. This means `request_id` alone
+is **not** a deduplication key here; `metric_idempotency_keys` fulfils that role.
 
 **Retention**: Automatic delete after 7 days
 
@@ -159,6 +163,54 @@ SELECT create_hypertable('metrics_1d', 'time', if_not_exists => TRUE);
 
 CREATE INDEX ON metrics_1d (workspace_id, time DESC);
 ```
+
+---
+
+---
+
+## IDEMPOTENCY TABLES
+
+### metric_idempotency_keys
+
+Deduplication guard for metric ingestion. **Not a hypertable.**
+
+```sql
+CREATE TABLE metric_idempotency_keys (
+  request_id  UUID PRIMARY KEY,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Rationale:**
+TimescaleDB requires that any UNIQUE constraint on a hypertable includes the partition column
+(`time`). This prevents having `UNIQUE(request_id)` directly on `metrics_raw`.
+`metric_idempotency_keys` is a plain relational table that acts as the idempotency arbiter.
+
+**Write flow in `DrizzleMetricsRepository.save()`:**
+
+```sql
+-- Step 1: attempt to claim the requestId (atomic)
+INSERT INTO metric_idempotency_keys (request_id)
+VALUES ($1)
+ON CONFLICT DO NOTHING
+RETURNING request_id;
+
+-- If RETURNING is empty → duplicate, return silently (no error)
+-- If RETURNING has a row → proceed to step 2
+
+-- Step 2: insert the actual metric data
+INSERT INTO metrics_raw (...) VALUES (...);
+```
+
+Both steps run in a single transaction. The `PRIMARY KEY` acts as a distributed mutex:
+two concurrent requests with the same `requestId` cannot both proceed past step 1.
+
+**`existsByRequestId()` queries this table** (primary key lookup, O(1)) instead of
+scanning the hypertable.
+
+**Retention:** Recommended ≥ 7 days (aligned with `metrics_raw` retention).
+Old records can be purged by a cleanup job once their corresponding `metrics_raw` data
+has expired.
 
 ---
 
@@ -496,6 +548,7 @@ LIMIT 1;
 | Table | Retention | Action |
 |-------|-----------|--------|
 | metrics_raw | 7 days | Auto-delete (TimescaleDB) |
+| metric_idempotency_keys | ≥ 7 days | Manual cleanup job (align with metrics_raw) |
 | metrics_5min | 90 days | Manual cleanup job |
 | metrics_1h | 1 year | Manual cleanup job |
 | metrics_1d | Infinite | Keep forever |
@@ -615,4 +668,4 @@ ALTER TABLE metrics_raw DROP COLUMN latency_ms;
 | INET | IP addresses |
 | JSONB | Flexible data (settings, metadata) |
 
-Last Updated: January 2025
+Last Updated: June 2026

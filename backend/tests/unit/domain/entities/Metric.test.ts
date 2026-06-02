@@ -2,19 +2,12 @@
 //
 // Testes unitários para a entidade Metric.
 
-import { Metric, CreateMetricInput } from '@domain/entities/Metric';
+import { Metric } from '@domain/entities/Metric';
 import { ValidationError } from '@shared/errors';
+import { BASE_METRIC_INPUT } from '../../../fixtures/metrics';
 
-// Fixture reutilizável com dados válidos.
-const validInput: CreateMetricInput = {
-  workspaceId: 'ws-550e8400-e29b-41d4-a716-446655440000',
-  apiKeyId: 'key-550e8400-e29b-41d4-a716-446655440001',
-  endpoint: '/api/users',
-  method: 'GET',
-  latencyMs: 150,
-  statusCode: 200,
-  requestId: 'req-550e8400-e29b-41d4-a716-446655440002',
-};
+// Fixture reutilizável de fixtures para testes.
+const validInput = { ...BASE_METRIC_INPUT };
 
 // Testes
 describe('Metric Entity', () => {

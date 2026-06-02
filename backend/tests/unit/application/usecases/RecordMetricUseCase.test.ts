@@ -5,24 +5,16 @@
 // O objectivo é testar APENAS a lógica de orquestração do use case.
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
-import { RecordMetricInputDTO } from '@application/dto/MetricsDTO';
 import {
   MetricsRepository,
   MetricsCacheService,
   AggregationQueueService,
 } from '@application/contracts/repositories';
 import { AppError, ValidationError } from '@shared/errors';
+import { BASE_METRIC_INPUT } from '../../../fixtures/metrics';
 
-// Fixture com input válido reutilizável em todos os testes.
-const validInput: RecordMetricInputDTO = {
-  workspaceId: 'ws-550e8400-e29b-41d4-a716-446655440000',
-  apiKeyId: 'key-550e8400-e29b-41d4-a716-446655440001',
-  endpoint: '/api/users',
-  method: 'GET',
-  latencyMs: 150,
-  statusCode: 200,
-  requestId: 'req-550e8400-e29b-41d4-a716-446655440002',
-};
+// Fixture reutilizável de fixtures para testes.
+const validInput = { ...BASE_METRIC_INPUT };
 
 describe('RecordMetricUseCase', () => {
   // Declaração de mocks fora para reutilização em todos os testes.

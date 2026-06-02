@@ -54,3 +54,4 @@ backend/.claude/settings.json
 # Documentation
 backend/docs/sprints_concluidos/*
 backend/docs/adjust_tests/*
+backend/docs/adjust_code/*
