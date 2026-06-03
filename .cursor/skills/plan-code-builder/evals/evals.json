@@ -1,0 +1,23 @@
+{
+  "skill_name": "plan-code-builder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Tenho um plano para criar um endpoint de autenticação com JWT em FastAPI. Analisa o projeto (é Python com FastAPI e pytest) e gera os ficheiros com o código passo a passo, validando syntax, PEP 8 e sugerindo testes.",
+      "expected_output": "Ficheiro .md com implementação de autenticação JWT, passo a passo (setup, token generation, validation), comentários em português, validação de syntax/lint, sugestões de testes pytest",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Criei um plano para um componente React de formulário de login. O projeto é TypeScript + React + Jest. Gera o código passo a passo com comentários, valida ESLint, TypeScript types, e analisa cobertura de testes.",
+      "expected_output": "Ficheiro .md com componente React, hooks, validação, comentários em português, type hints TypeScript, checklist ESLint compliance, sugestões de testes Jest",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Preciso gerar código para uma função Python que faz parsing de CSV e valida dados. O projeto usa pylint e pytest. Analisa conventions, gera passo a passo com tratamento de erros, e valida tudo.",
+      "expected_output": "Ficheiro .md com parser CSV, passo a passo (read, parse, validate), comentários português, tratamento de erros, PEP 8 compliant, sugestões de cobertura pytest",
+      "files": []
+    }
+  ]
+}

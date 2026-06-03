@@ -1,25 +1,29 @@
-// src/infra/frameworks/database/connection.ts
-//
-// Cria e exporta a ligação á base de dados.
-//
-// A ligação à base de dados é uma dependência de infra-estrutura.
-// Separar do schema permite importar a ligação sem importar o schema
-// e vice-versa. Também facilita os testes de integração, onde
-// podemos substituir a ligação por uma de teste.
+/**
+ * Cria e exporta a ligação á base de dados.
+ *
+ * A ligação à base de dados é uma dependência de infra-estrutura.
+ * Separar do schema permite importar a ligação sem importar o schema
+ * e vice-versa. Também facilita os testes de integração, onde
+ * podemos substituir a ligação por uma de teste.
+ */
 
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { logger } from '../logging';
 import * as schema from './schema';
 
-// Pool de ligação PostgreSQL
-// Um pool mantém várias ligações abertas em simultâneo,
-// reutilizando-as em vez de abrir e fechar uma por request.
-// Isto é crítico para performance com muitos requests concorrentes.
+/**
+ * Pool de ligação PostgreSQL
+ * Um pool mantém várias ligações abertas em simultâneo,
+ * reutilizando-as em vez de abrir e fechar uma por request.
+ * Isto é crítico para performance com muitos requests concorrentes.
+ */
 let pool: Pool | null = null;
 
-// Instância do Drizzle ORM -> o que o resto da aplicação usa para queries.
-// O tipo Database encapsula o pool e o schema.
+/**
+ * Instância do Drizzle ORM -> o que o resto da aplicação usa para queries.
+ * O tipo Database encapsula o pool e o schema.
+ */
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
 let db: Database | null = null;
 
@@ -35,9 +39,11 @@ const POOL_CONFIG = {
   idleTimeoutMillis: 30000,
 };
 
-// Inicializa o pool e a instância Drizzle.
-// Deve ser chamada uma vez no arranque da aplicação (main.ts).
-// Retorna a instância db para ser passada via Dependency Injection.
+/**
+ * Inicializa o pool e a instância Drizzle.
+ * Deve ser chamada uma vez no arranque da aplicação (main.ts).
+ * Retorna a instância db para ser passada via Dependency Injection.
+ */
 export function initializeDatabase(databaseUrl: string): Database {
   if (db) {
     // Já foi inicializado -> retorna a instância existente
@@ -66,9 +72,10 @@ export function initializeDatabase(databaseUrl: string): Database {
 
   return db;
 }
-
-// Fecha o pool e a instância Drizzle.
-// Deve ser chamado no graceful shutdown da aplicação.
+/**
+ * Fecha o pool e a instância Drizzle.
+ * Deve ser chamado no graceful shutdown da aplicação.
+ */
 export async function closeDatabaseConnection(): Promise<void> {
   if (pool) {
     logger.info('database_closing');
@@ -78,9 +85,11 @@ export async function closeDatabaseConnection(): Promise<void> {
     logger.info('database_closed');
   }
 }
+/**
+ * Verifica se a BD está acessível.
+ * Usado no health check /ready do Express.
+ */
 
-// Verifica se a BD está acessível.
-// Usado no health check /ready do Express.
 export async function checkDatabaseConnection(): Promise<boolean> {
   if (!pool) {
     return false;
@@ -98,4 +107,15 @@ export async function checkDatabaseConnection(): Promise<boolean> {
     });
     return false;
   }
+}
+
+/**
+ * Obtém a instância já inicializada da database.
+ * Deve ser chamada após initializeDatabase().
+ */
+export function getDatabase(): Database {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  return db;
 }

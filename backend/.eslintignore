@@ -13,3 +13,4 @@ tests
 *.log
 .idea
 .docs
+code_review_agent.ts

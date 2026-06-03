@@ -1,4 +1,3 @@
-// main.ts
 /**
  * Ponto de entrada principal do servidor
  * Configura e inicia o servidor Express

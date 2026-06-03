@@ -55,3 +55,5 @@ backend/.claude/settings.json
 backend/docs/sprints_concluidos/*
 backend/docs/adjust_tests/*
 backend/docs/adjust_code/*
+backend/code_review_agent.ts
+

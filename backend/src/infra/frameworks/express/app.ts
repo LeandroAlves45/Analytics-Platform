@@ -1,12 +1,25 @@
-// app.ts
-// Arquivo de configuração do Express
+/**
+ * Configuração base da aplicação Express.
+ *
+ * Este ficheiro tem duas responsabilidades separadas:
+ *
+ *   createApp()       — cria a app com middleware de infra (parsing, CORS,
+ *                       logging, health checks). Não conhece rotas de negócio.
+ *
+ *   registerRoutes()  — monta os routers de negócio e os handlers terminais
+ *                       (404 e error handler). Chamada depois de createApp().
+ *
+ * Separar as duas funções permite que testes de integração criem a app base
+ * e montem apenas os routers relevantes para cada teste.
+ */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { AppRouters } from './bootstrap';
 import { logger } from '../../frameworks/logging';
 import { errorHandlerMiddleware } from '../../middleware/ErrorHandlerMiddleware';
 import { ErrorCodes } from '../../../shared/errors';
 
-// Interface para request com contexto adicional
+// Estender a interface Request do Express com o campo id
 declare global {
   namespace Express {
     interface Request {
@@ -16,88 +29,111 @@ declare global {
 }
 
 /**
- * Cria e configura o servidor Express
- * Configura middlewares, rotas e handlers de erro
- * @returns Aplicação Express configurada
+ * Cria a aplicação Express com middleware de infra.
+ * Não regista rotas de negócio — isso é responsabilidade de registerRoutes().
+ *
+ * Middleware registado aqui (por ordem):
+ *   1. express.json()  — parseia body JSON de todos os requests
+ *   2. requestId       — atribui ID único a cada request para correlação de logs
+ *   3. requestLogger   — loga método, path e duração de cada request
+ *   4. cors            — cabeçalhos de controlo de acesso cross-origin
+ *   5. /health         — liveness probe (está o servidor vivo?)
+ *   6. /ready          — readiness probe (está pronto para tráfego?)
+ *
+ * @returns Instância Express configurada com middleware de infra.
  */
 export function createApp(): Express {
   const app = express();
 
-  // Middlewares: Parsing de Json
-  // Converte requesst body em JSON string para objeto JavaScript
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // Parseia o body de requests com Content-Type: application/json.
+  // Limite de 1mb é suficiente para payloads de métricas.
+  app.use(express.json({ limit: '1mb' }));
 
-  // Middlewares: Request ID
-  // Gera um ID único para cada requisição (rastreamento de logs)
+  // Atribui um ID único a cada request.
+  // Usado nos logs para correlacionar todas as entradas de um mesmo pedido.
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    req.id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Usa o header X-Request-ID se o cliente o enviar (ex: SDK ou load balancer),
+    // caso contrário gera um novo baseado em timestamp + random.
+    req.id =
+      (req.headers['x-request-id'] as string) ??
+      `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     next();
   });
 
-  // Middlewares: Logging de requests
-  // Loga cada request com método, path, status e duração
+  // Loga cada request com método, path, status e duração.
+  // Usa o response 'finish' event para capturar o status após o handler correr.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const startTime = Date.now();
+    const requestId = req.id;
 
-    // Hook executado após a resposta ser finalizada
     res.on('finish', () => {
-      const duration = Date.now() - startTime;
       logger.info('http_request', {
-        request_id: req.id,
+        request_id: requestId,
         method: req.method,
         path: req.path,
         status: res.statusCode,
-        duration_ms: duration,
-        ip: req.ip,
+        duration_ms: Date.now() - startTime,
       });
     });
 
     next();
   });
 
-  // Middlewares: CORS
-  // Permite requisições de outros domínios
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-
-    return next();
+  // Cabeçalhos CORS para permitir pedidos cross-origin.
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    const corsOrigin = process.env['CORS_ORIGIN'] ?? 'http://localhost:3000';
+    res.header('Access-Control-Allow-Origin', corsOrigin);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
+    next();
   });
 
-  // Route: Health check
-  // Endpoint para verificar se o servidor está online
-  // Usado para monitoramento e load balancers
+  // Liveness probe — o orquestrador (Kubernetes, Railway) usa este endpoint
+  // para saber se o processo está vivo. Responde sempre 200 se o servidor correr.
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Route: Readiness check
-  // Verifica se o servidor está pronto para receber tráfego
-  // Diferente de health, pode estar vivo mas não pronto
+  // Readiness probe — indica se a app está pronta para receber tráfego.
+  // Num sistema com base de dados, aqui verificaríamos a conexão.
   app.get('/ready', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ready', timestamp: new Date().toISOString() });
   });
 
-  // Middleware: 404 — rota HTTP não registada (diferente de NotFoundError de domínio)
-  app.use((_req: Request, res: Response) => {
+  return app;
+}
+
+/**
+ * Monta os routers de negócio e os handlers terminais na app Express.
+ *
+ * Deve ser chamada DEPOIS de createApp() e ANTES de startServer().
+ * A ordem interna desta função também importa:
+ *   1. Routers de negócio   — respondem a rotas conhecidas
+ *   2. 404 handler          — apanha rotas desconhecidas (depois dos routers)
+ *   3. errorHandlerMiddleware — apanha erros de tudo o que veio acima (sempre último)
+ *
+ * @param app     — Instância Express criada por createApp().
+ * @param routers — Routers de negócio criados pelo bootstrap().
+ */
+export function registerRoutes(app: Express, routers: AppRouters): void {
+  app.use('/api/metrics', routers.metricsRouter);
+
+  // Handler de 404 — só chega aqui se nenhum router acima correspondeu ao path.
+  // Deve ficar depois de todos os routers para não interceptar rotas válidas.
+  app.use((req: Request, res: Response) => {
     res.status(404).json({
       error: {
         code: ErrorCodes.NOT_FOUND,
-        message: 'Endpoint does not exist',
+        message: `Cannot ${req.method} ${req.path}`,
       },
     });
   });
 
-  // Middleware: tratamento global de erros — deve ser o último middleware registado
+  // Middleware global de erros — SEMPRE o último middleware registado.
+  // Captura qualquer erro passado via next(err) por qualquer router acima.
+  // A assinatura com 4 parâmetros é obrigatória para o Express reconhecê-lo
+  // como error handler e não como middleware normal.
   app.use(errorHandlerMiddleware);
-
-  return app;
 }
 
 /**

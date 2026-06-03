@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest *)",
+      "Bash(python -m pytest)",
+      "Bash(python -m uvicorn *)",
+      "Bash(python -m pip install *)",
+      "Bash(python -m pip install)",
+      "Bash(pip install *)",
+      "Bash(ruff check *)",
+      "Bash(ruff format *)",
+      "Bash(npm run lint *)",
+      "Bash(npm run test *)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm install)",
+      "Bash(npm install *)",
+      "Bash(docker-compose up *)",
+      "Bash(docker-compose down *)",
+      "Bash(docker-compose logs *)",
+      "Bash(docker build *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git stash *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh run *)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/stripe_keys.txt)",
+      "Read(**/STRIPE_*)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Write(**/secrets/**)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Write(**/stripe_keys.txt)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Edit(**/secrets/**)",
+      "Edit(**/*.pem)",
+      "Edit(**/*.key)",
+      "Edit(**/app/db/migrations/*)",
+      "Edit(**/docker-compose*.yml)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files-ADJUSTED.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Checking file protections..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-large-files-ADJUSTED.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Checking for build artifacts..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/scan-secrets-ADJUSTED.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Scanning for secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous-commands.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Checking command safety..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-save.sh\"",
+            "timeout": 15000,
+            "statusMessage": "Formatting..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Loading project context..."
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/context-recovery-ADJUSTED.sh\"",
+            "timeout": 5000,
+            "statusMessage": "Recovering critical project rules..."
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "which osascript >/dev/null 2>&1 && osascript -e 'display notification \"Claude Code needs your attention\" with title \"Claude Code\"' || which notify-send >/dev/null 2>&1 && notify-send 'Claude Code' 'Claude Code needs your attention' || true"
+          }
+        ]
+      }
+    ]
+  }
+}

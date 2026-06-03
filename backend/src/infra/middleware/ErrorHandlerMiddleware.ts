@@ -1,12 +1,12 @@
-// src/infra/middleware/ErrorHandlerMiddleware.ts
-//
-// Middleware global de erros do Express (4 argumentos: err, req, res, next).
-// Deve ser registado por último em app.ts, após todas as rotas.
-//
-// Fluxo:
-//   1. JSON malformado → 400 BAD_REQUEST
-//   2. AppError operacional → statusCode correcto via ErrorPresenter
-//   3. Qualquer outro erro → 500 INTERNAL_SERVER_ERROR
+/**
+ * Middleware global de erros do Express (4 argumentos: err, req, res, next).
+ * Deve ser registado por último em app.ts, após todas as rotas.
+ *
+ * Fluxo:
+ *   1. JSON malformado → 400 BAD_REQUEST
+ *   2. AppError operacional → statusCode correcto via ErrorPresenter
+ *   3. Qualquer outro erro → 500 INTERNAL_SERVER_ERROR
+ */
 
 import { Request, Response, NextFunction } from 'express';
 import { AppError, ErrorCodes } from '../../shared/errors';
