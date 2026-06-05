@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+coverage
+tests
+*.js
+!.jest.config.js
+.claude
+.cursor
+.vscode
+.git
+.env*
+*.log
+.idea
+.docs

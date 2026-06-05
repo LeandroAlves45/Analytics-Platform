@@ -9,6 +9,7 @@ frontend/.env
 # Dependencies
 backend/node_modules/
 frontend/node_modules/
+sdk/node_modules/
 npm-debug.log*
 yarn-error.log*
 
