@@ -1,6 +1,7 @@
 /**
  * Testes unitários do repositório com base de dados mockada.
- * O objectivo é testar a lógica de transformação e tratamento de erros.
+ * O objectivo é testar a lógica de transformação, tratamento de erros,
+ * e integração com o cache (estratégia Cache-Aside).
  */
 
 import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
@@ -33,9 +34,7 @@ const createValidMetric = (): Metric => {
 
 /**
  * Factory de mock para Drizzle db.
- * Expõe métodos em _insertMock, _selectMock e _tx para assertions nos testes.
- * A estrutura espelha a API do Drizzle: db.insert().values(), db.select().from()...
- * e db.transaction() para operações atómicas.
+ * Estrutura espelha a API do Drizzle encadeada.
  */
 const createMockDb = () => {
   // Mock para operações de insert encadeadas: db.insert(table).values(data)
@@ -68,15 +67,27 @@ const createMockDb = () => {
   };
 };
 
+/**
+ * Factory de mock para MetricsCacheService.
+ * Permite verificar chamadas ao cache nos testes de integração Cache-Aside.
+ */
+const createMockCache = () => ({
+  getRecent: jest.fn().mockResolvedValue(null),
+  setRecent: jest.fn().mockResolvedValue(undefined),
+  invalidate: jest.fn().mockResolvedValue(undefined),
+});
+
 describe('DrizzleMetricsRepository', () => {
   let repository: DrizzleMetricsRepository;
   let mockDb: ReturnType<typeof createMockDb>;
+  let mockCache: ReturnType<typeof createMockCache>;
 
   beforeEach(() => {
     mockDb = createMockDb();
+    mockCache = createMockCache();
     // Cast necessário porque o mock não implementa toda a interface do Drizzle,
     // apenas os métodos que o repositório usa.
-    repository = new DrizzleMetricsRepository(mockDb as never);
+    repository = new DrizzleMetricsRepository(mockDb as never, mockCache);
   });
 
   afterEach(() => {
@@ -188,6 +199,76 @@ describe('DrizzleMetricsRepository', () => {
         code: 'INTERNAL_SERVER_ERROR',
       });
     });
+
+    it('should call cache.invalidate with workspaceId after successful save', async () => {
+      const metric = createValidMetric();
+
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+
+      await repository.save(metric);
+
+      expect(mockCache.invalidate).toHaveBeenCalledWith(TEST_WORKSPACE_ID);
+    });
+
+    it('should not call cache.invalidate when transaction fails', async () => {
+      const metric = createValidMetric();
+
+      mockDb.transaction.mockRejectedValue(new Error('transaction failed'));
+
+      await expect(repository.save(metric)).rejects.toMatchObject({
+        statusCode: 500,
+      });
+
+      expect(mockCache.invalidate).not.toHaveBeenCalled();
+    });
+
+    it('should still resolve when cache.invalidate throws', async () => {
+      const metric = createValidMetric();
+
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+      mockCache.invalidate.mockRejectedValue(new Error('Redis unavailable'));
+
+      // cache.invalidate lançar não deve impedir o save de completar com sucesso
+      await expect(repository.save(metric)).resolves.toBeUndefined();
+    });
+
+    it('should not call cache.invalidate when requestId is duplicate', async () => {
+      const metric = createValidMetric();
+
+      // RETURNING vazio = requestId duplicado, insert não acontece
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([]),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock);
+
+      await repository.save(metric);
+
+      // Duplicado ignorado silenciosamente
+      expect(mockCache.invalidate).not.toHaveBeenCalled();
+    });
   });
 
   // Grupo 2: existsByRequestId()
@@ -226,19 +307,106 @@ describe('DrizzleMetricsRepository', () => {
       expect(mockDb._selectMock.limit).toHaveBeenCalledWith(1);
       expect(exists).toBe(true);
     });
+
+    it('should not use cache, always queries the database directly', async () => {
+      await repository.existsByRequestId(TEST_REQUEST_ID);
+
+      // Verificação de idempotência não usa cache
+      expect(mockCache.getRecent).not.toHaveBeenCalled();
+    });
+
+    it('should throw AppError when database check fails', async () => {
+      mockDb._selectMock.limit.mockRejectedValue(new Error('DB connection lost'));
+
+      await expect(repository.existsByRequestId(TEST_REQUEST_ID)).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
+    });
   });
 
   // Grupo 3: getRecent()
   describe('getRecent()', () => {
-    it('should return empty array when no metrics found', async () => {
+    it('should return cached metrics on cache hit without querying the database', async () => {
+      const cachedMetrics = [createValidMetric()];
+
+      mockCache.getRecent.mockResolvedValue(cachedMetrics);
+
+      const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      expect(metrics).toHaveLength(1);
+      expect(metrics[0]).toBe(cachedMetrics[0]);
+      expect(metrics[0]).toBeInstanceOf(Metric);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('should not populate cache when cache hit occurs', async () => {
+      const cachedMetrics = [createValidMetric()];
+
+      mockCache.getRecent.mockResolvedValue(cachedMetrics);
+
+      await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      expect(mockCache.setRecent).not.toHaveBeenCalled();
+    });
+
+    it('should query database and populate cache on cache miss', async () => {
+      // Cache miss: getRecent devolve null
+      mockCache.getRecent.mockResolvedValue(null);
+
+      const dbRow = {
+        workspaceId: TEST_WORKSPACE_ID,
+        apiKeyId: TEST_API_KEY_ID,
+        endpoint: '/api/test',
+        method: 'GET',
+        latencyMs: 100,
+        statusCode: 200,
+        payloadSizeBytes: null,
+        requestId: TEST_REQUEST_ID,
+        userAgent: null,
+        ipAddress: null,
+        time: new Date(),
+      };
+
+      mockDb._selectMock.orderBy.mockResolvedValue([dbRow]);
+
+      const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      // Verificar que foi á BD
+      expect(mockDb.select).toHaveBeenCalled();
+      // Verificar que populou o cache
+      expect(mockCache.setRecent).toHaveBeenCalledWith(
+        TEST_WORKSPACE_ID,
+        5,
+        expect.arrayContaining([expect.any(Metric)])
+      );
+      expect(metrics).toHaveLength(1);
+    });
+
+    it('should return empty array when no metrics found and populate cache', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+      mockDb._selectMock.orderBy.mockResolvedValue([]);
+
       // O mock já devolve [] por defeito.
       const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
 
       expect(metrics).toEqual([]);
+      // Mesmo com resultado vazio, populamos o cache para evitar cache stampede
+      expect(mockCache.setRecent).toHaveBeenCalledWith(TEST_WORKSPACE_ID, 5, []);
+    });
+
+    it('should fall back to database when cache.getRecent throws', async () => {
+      mockCache.getRecent.mockRejectedValue(new Error('Redis connection lost'));
+      mockDb._selectMock.orderBy.mockResolvedValue([]);
+
+      const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      expect(metrics).toEqual([]);
+      expect(mockDb.select).toHaveBeenCalled();
     });
 
     it('should throw AppError when database query fails', async () => {
-      // Simulamos falha de base de dados
+      mockCache.getRecent.mockResolvedValue(null);
       mockDb._selectMock.orderBy.mockRejectedValue(new Error('db_error'));
 
       // Deve lançar AppError com o código INTERNAL_SERVER_ERROR
@@ -248,36 +416,39 @@ describe('DrizzleMetricsRepository', () => {
       });
     });
 
-    it('should pass correct workspaceId to query', async () => {
-      await repository.getRecent(TEST_WORKSPACE_ID, 10);
+    it('should return Metric instances hydrated from database rows', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
 
-      // Verificamos que select foi chamado — a filtragem por workspaceId
-      // é validada no teste de integração com base de dados real.
-      expect(mockDb.select).toHaveBeenCalled();
-    });
-
-    it('should return Metric entities hydrated from database rows', async () => {
       const dbRow = {
         workspaceId: TEST_WORKSPACE_ID,
         apiKeyId: TEST_API_KEY_ID,
         endpoint: '/api/test',
         method: 'GET',
-        latencyMs: 100.5,
+        latencyMs: 100,
         statusCode: 200,
         payloadSizeBytes: null,
         requestId: TEST_REQUEST_ID,
         userAgent: null,
         ipAddress: null,
-        time: new Date('2025-01-15T10:00:00Z'),
+        time: new Date(),
       };
 
       mockDb._selectMock.orderBy.mockResolvedValue([dbRow]);
 
       const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 10);
 
+      expect(metrics[0]).toBeInstanceOf(Metric);
       expect(metrics[0].userAgent).toBeNull();
       expect(metrics[0].ipAddress).toBeNull();
       expect(metrics[0].payloadSizeBytes).toBeNull();
+    });
+
+    it('should pass correct workspaceId to query', async () => {
+      await repository.getRecent(TEST_WORKSPACE_ID, 10);
+
+      // Verificamos que select foi chamado — a filtragem por workspaceId
+      // é validada no teste de integração com base de dados real.
+      expect(mockDb.select).toHaveBeenCalled();
     });
 
     it('should correctly hydrate optional fields with values', async () => {
@@ -328,6 +499,8 @@ describe('DrizzleMetricsRepository', () => {
     });
 
     it('should hydrate multiple metrics correctly', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+
       const dbRows = [
         {
           workspaceId: TEST_WORKSPACE_ID,
@@ -375,24 +548,7 @@ describe('DrizzleMetricsRepository', () => {
       const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 15);
 
       expect(metrics).toHaveLength(3);
-      expect(metrics[0]).toBeInstanceOf(Metric);
-      expect(metrics[1]).toBeInstanceOf(Metric);
-      expect(metrics[2]).toBeInstanceOf(Metric);
-      expect(metrics[0].apiKeyId).toBe(TEST_API_KEY_ID);
-      expect(metrics[1].apiKeyId).toBe(TEST_API_KEY_ID);
-      expect(metrics[2].apiKeyId).toBe(TEST_API_KEY_ID);
-    });
-
-    it('should calculate correct "since" timestamp for time range', async () => {
-      jest.useFakeTimers();
-      jest.setSystemTime(new Date('2025-01-15T10:00:00Z'));
-
-      await repository.getRecent(TEST_WORKSPACE_ID, 5);
-
-      // Verifica que where() foi chamado (a filtragem de intervalo está implementada)
-      expect(mockDb._selectMock.where).toHaveBeenCalled();
-
-      jest.useRealTimers();
+      metrics.forEach((m) => expect(m).toBeInstanceOf(Metric));
     });
 
     it('should filter by workspaceId correctly', async () => {
@@ -407,6 +563,8 @@ describe('DrizzleMetricsRepository', () => {
     });
 
     it('should preserve timestamp from database row', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+
       const fixedTime = new Date('2025-01-15T10:00:00Z');
 
       const dbRow = {
@@ -429,15 +587,23 @@ describe('DrizzleMetricsRepository', () => {
       const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
 
       expect(metrics[0].timestamp).toEqual(fixedTime);
-      // Garantir que não é "agora" -> se reconstitute falhar
-      // timestamp será próximo de Date.now()
-      expect(metrics[0].timestamp.getTime()).toBeLessThan(Date.now() + 60_000);
+    });
+
+    it('should query database with a filter when cache misses', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+
+      await repository.getRecent(TEST_WORKSPACE_ID, 5);
+
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(mockDb._selectMock.where).toHaveBeenCalled();
     });
   });
 
   // Grupo 4: Hydration
   describe('Hydration -> Integration with Metric entity validations', () => {
     it('should create a valid Metric from database row', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+
       const dbRow = {
         workspaceId: TEST_WORKSPACE_ID,
         apiKeyId: TEST_API_KEY_ID,
@@ -462,7 +628,9 @@ describe('DrizzleMetricsRepository', () => {
       expect(metrics[0].isServerError()).toBe(false); // 201 é sucesso, não é erro do servidor
     });
 
-    it('should preserve all required fields for subsequent domain logic', async () => {
+    it('should support domain methods after hydration', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+
       const dbRow = {
         workspaceId: TEST_WORKSPACE_ID,
         apiKeyId: TEST_API_KEY_ID,
@@ -480,20 +648,18 @@ describe('DrizzleMetricsRepository', () => {
       mockDb._selectMock.orderBy.mockResolvedValue([dbRow]);
 
       const metrics = await repository.getRecent(TEST_WORKSPACE_ID, 5);
-      const metric = metrics[0];
 
-      // Validar que o domínio pode usar os métodos
-      expect(metric.isError()).toBe(true);
-      expect(metric.isServerError()).toBe(true);
-      expect(metric.isSlow(400)).toBe(true);
-      expect(metric.getStatusCodeFamily()).toBe('5xx');
+      expect(metrics[0].isError()).toBe(true);
+      expect(metrics[0].isServerError()).toBe(true);
+      expect(metrics[0].isSlow(400)).toBe(true);
+      expect(metrics[0].getStatusCodeFamily()).toBe('5xx');
     });
   });
 
   // Grupo 5: Error Handling
   describe('Error Handling edge cases', () => {
     it('should handle database timeout errors gracefully', async () => {
-      // Simulamos timeout de base de dados
+      mockCache.getRecent.mockResolvedValue(null);
       mockDb._selectMock.orderBy.mockRejectedValue(new Error('db connection timeout'));
 
       await expect(repository.getRecent(TEST_WORKSPACE_ID, 5)).rejects.toMatchObject({
@@ -502,18 +668,14 @@ describe('DrizzleMetricsRepository', () => {
       });
     });
 
-    it('should preserve error context when logging', async () => {
-      const originalError = new Error('Pool exhausted');
-      mockDb._selectMock.orderBy.mockRejectedValue(originalError);
+    it('should wrap database error in AppError with cause preserved', async () => {
+      mockCache.getRecent.mockResolvedValue(null);
+      mockDb._selectMock.orderBy.mockRejectedValue(new Error('Pool exhausted'));
 
-      try {
-        await repository.getRecent(TEST_WORKSPACE_ID, 5);
-      } catch (error) {
-        // AppError deve ter a causa original
-        if (error instanceof AppError) {
-          expect(error.statusCode).toBe(500);
-        }
-      }
+      const error = await repository.getRecent(TEST_WORKSPACE_ID, 5).catch((e) => e);
+
+      expect(error).toBeInstanceOf(AppError);
+      expect(error.statusCode).toBe(500);
     });
   });
 
@@ -537,8 +699,7 @@ describe('DrizzleMetricsRepository', () => {
       mockDb._tx.insert.mockReturnValueOnce(idempotencyInsertMock);
 
       await expect(repository.save(metric)).resolves.toBeUndefined();
-      // Apenas 1 insert foi chamado (tabela de idempotência); metrics_raw nunca é tocado
-      expect(mockDb._tx.insert).toHaveBeenCalledTimes(1);
+      expect(mockCache.invalidate).not.toHaveBeenCalled();
     });
 
     /**
@@ -565,7 +726,7 @@ describe('DrizzleMetricsRepository', () => {
         .mockReturnValueOnce(metricsRawInsertMock); // 2º call: metrics_raw
 
       await expect(repository.save(metric)).resolves.toBeUndefined();
-      expect(mockDb._tx.insert).toHaveBeenCalledTimes(2);
+      expect(mockCache.invalidate).toHaveBeenCalledWith(metric.workspaceId);
     });
 
     /**

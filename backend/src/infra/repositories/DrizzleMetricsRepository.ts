@@ -2,6 +2,11 @@
  * Implementação concreta do contrato MetricsRepository usando Drizzle ORM.
  * Esta classe é o único sítio em todo o sistema que sabe como as métricas
  * são fisicamente guardadas no PostgreSQL com TimescaleDB.
+ *
+ * Foi adicionada integração com cache (MetricsCacheService).
+ * O padrão utilizado é Cache-Aside:
+ * - getRecent: verifica cache → se miss vai à BD e popula cache
+ * - save: persiste na BD → invalida cache do workspace
  */
 
 import { eq, gte, and } from 'drizzle-orm';
@@ -10,7 +15,8 @@ import type { Database } from '@infra/frameworks/database';
 import { Metric, type HttpMethod } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors/AppError';
 import { logger } from '@infra/frameworks/logging';
-import { MetricsRepository } from '@application/contracts/repositories';
+import type { MetricsRepository } from '@application/contracts/repositories';
+import type { MetricsCacheService } from '@application/contracts/cache';
 import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/schema';
 
 /**
@@ -22,29 +28,27 @@ import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/sc
  * @param {Database} db - Drizzle ORM Database instance.
  */
 export class DrizzleMetricsRepository implements MetricsRepository {
-  // Recebemos a instância da base de dados por injecção de dependências.
-  constructor(private readonly db: Database) {}
+  // O repositório recebe tanto a base de dados como o serviço de cache
+  // por injecção de dependências. Nenhum dos dois é instanciado aqui.
+  constructor(
+    private readonly db: Database,
+    private readonly cache: MetricsCacheService
+  ) {}
 
   /**
-   * Persiste uma métrica de forma idempotente usando transação atómica.
+   * Persiste uma métrica de forma idempotente e invalida o cache do workspace.
    *
-   * Executa dois passos atómicos dentro de uma transação:
-   * 1. `INSERT INTO metric_idempotency_keys (request_id) ON CONFLICT DO NOTHING RETURNING request_id`
-   *    → Se `RETURNING` vier vazio: requestId já foi processado, retorna silenciosamente (idempotência)
-   *    → Se `RETURNING` vier com a linha: novo requestId, prossegue para passo 2
-   * 2. Se novo requestId: `INSERT INTO metrics_raw (...)` com todos os dados da métrica
-   *
-   * O `PRIMARY KEY` em `metric_idempotency_keys` actua como mutex distribuído,
-   * garantindo que mesmo sob race conditions concorrentes, apenas uma métrica por
-   * requestId é armazenada.
-   *
-   * @param metric - Instância de `Metric` válida a persistir
-   * @throws {AppError} Com `code: 'INTERNAL_SERVER_ERROR'` em falha de BD inesperada
-   * @returns Promise que resolve sem retorno (void)
+   * A invalidação do cache ocorre APÓS a transação confirmar com sucesso.
+   * Se a transação falhar, o cache não é tocado -> não há dados novos na BD.
+   * Se a invalidação do cache falhar, o erro é silenciado pelo RedisMetricsCache
+   * (ou ignorado pelo NoOpMetricsCacheService). A BD é a fonte de verdade.
    */
   async save(metric: Metric): Promise<void> {
+    let wasSaved = false;
+
     try {
       await this.db.transaction(async (tx) => {
+        // Passo 1: tentar inserir o requestId na tabela de idempotência
         const inserted = await tx
           .insert(metricIdempotencyKeys)
           .values({ requestId: metric.requestId })
@@ -57,6 +61,7 @@ export class DrizzleMetricsRepository implements MetricsRepository {
           return;
         }
 
+        // Passo 2: inserir a métrica na hypertable
         await tx.insert(metricsRaw).values({
           time: metric.timestamp,
           workspaceId: metric.workspaceId,
@@ -70,6 +75,8 @@ export class DrizzleMetricsRepository implements MetricsRepository {
           userAgent: metric.userAgent ?? undefined,
           ipAddress: metric.ipAddress ?? undefined,
         });
+
+        wasSaved = true;
       });
     } catch (error) {
       logger.error('metric_save_failed', {
@@ -81,24 +88,24 @@ export class DrizzleMetricsRepository implements MetricsRepository {
         cause: error as Error,
       });
     }
+
+    // Invalidar o cache apenas quando a métrica foi de facto inserida.
+    // try/catch garante que uma falha de cache não mascara o sucesso da BD —
+    // a métrica já foi persistida, o cache é best-effort.
+    if (wasSaved) {
+      try {
+        await this.cache.invalidate(metric.workspaceId);
+      } catch {
+        // silenciado: falha de cache não deve reverter uma escrita bem-sucedida
+      }
+    }
   }
 
   /**
-   * Verifica se um `requestId` já foi processado.
-   *
-   * Consulta `metric_idempotency_keys` (tabela normal, não hypertable) usando o PRIMARY KEY.
-   * O lookup é O(1) — extremamente eficiente comparado a varrer a hypertable `metrics_raw`
-   * que pode ter milhões de linhas com retenção de 7 dias.
-   *
-   * **Nota sobre race conditions:**
-   * Este método é usado como guarda no `RecordMetricUseCase` antes de chamar `save()`.
-   * Dois pedidos concorrentes com o mesmo `requestId` podem ambos passar este check
-   * antes de qualquer um chamar `save()`. A verdadeira proteção de idempotência
-   * ocorre dentro de `save()` no PRIMARY KEY em transação.
-   *
-   * @param requestId - UUID do pedido a verificar
-   * @returns `true` se já foi registado em `metric_idempotency_keys`, `false` caso contrário
-   * @throws {AppError} Com `code: 'INTERNAL_SERVER_ERROR'` em falha de BD
+   * Verifica se um requestId já foi processado.
+   * Não utiliza cache, a verificação de idempotência assenta no PRIMARY KEY da BD.
+   * O cache-aside não se aplica aqui: o custo de um false negative seria inserir
+   * uma métrica duplicada, o que viola a integridade dos dados.
    */
   async existsByRequestId(requestId: string): Promise<boolean> {
     try {
@@ -124,9 +131,32 @@ export class DrizzleMetricsRepository implements MetricsRepository {
     }
   }
 
-  // Devolve métricas recentes de um workspace para um intervalo em minutos.
-  // A query beneficia do índice composto (workspace_id, time DESC)
+  /**
+   * Devolve métricas recentes de um workspace com estratégia Cache-Aside.
+   *
+   * Fluxo:
+   * 1. Tentar cache (getRecent) → se hit, retornar imediatamente
+   * 2. Se miss: ir à BD, obter métricas
+   * 3. Popular cache com os resultados (setRecent)
+   * 4. Retornar métricas
+   *
+   * Se o cache falhar em qualquer passo, o fluxo continua via BD sem erro.
+   */
   async getRecent(workspaceId: string, minutes: number): Promise<Metric[]> {
+    // Passo 1: verificar cache. .catch(() => null) garante fallback para a BD
+    // se qualquer implementação de MetricsCacheService lançar inesperadamente.
+    const cached = await this.cache.getRecent(workspaceId, minutes).catch(() => null);
+
+    if (cached !== null) {
+      // Cache hit: evitar a query à BD
+      logger.debug('metrics_repository_cache_hit', {
+        workspaceId,
+        minutes,
+      });
+      return cached;
+    }
+
+    // Passo 2: cache miss -> ir à BD
     try {
       // Calculamos o timestamp mínimo a partir de agora menos o intervalo
       const since = new Date(Date.now() - minutes * 60 * 1000);
@@ -137,11 +167,15 @@ export class DrizzleMetricsRepository implements MetricsRepository {
         .where(and(eq(metricsRaw.workspaceId, workspaceId), gte(metricsRaw.time, since)))
         .orderBy(metricsRaw.time);
 
-      // Convertemos cada linha da base de dados numa entidade Metric.
-      // Este processo chama-se "hydration" — reidratamos os dados em objectos de domínio.
-      return rows.map((row) => this.hydrateMetric(row));
+      const metrics = rows.map((row) => this.hydrateMetric(row));
+
+      // Passo 3: popular cache para a próxima leitura
+      // Se falhar, silencia o erro internamente
+      await this.cache.setRecent(workspaceId, minutes, metrics);
+
+      return metrics;
     } catch (error) {
-      logger.error('metric_get_recent_failed', { workspace_id: workspaceId, minutes, error });
+      logger.error('metric_get_recent_failed', { workspaceId, minutes, error });
 
       throw new AppError('Failed to retrieve recent metrics', 'INTERNAL_SERVER_ERROR', 500, {
         cause: error as Error,

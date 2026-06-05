@@ -17,9 +17,10 @@
 
 import { Router } from 'express';
 import { getDatabase } from '@infra/frameworks/database/connection';
-import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
-import { NoOpMetricsCacheService } from '@infra/cache/NoOpMetricsCacheService';
+import { getRedisClient } from '@infra/frameworks/cache/redis';
+import { RedisMetricsCache } from '@infra/cache/RedisMetricsCache';
 import { NoOpAggregationQueueService } from '@infra/queue/NoOpAggregationQueueService';
+import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import { MetricsController } from '@infra/controllers/MetricsController';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
@@ -41,30 +42,26 @@ export interface AppRouters {
  * @returns Objecto com todos os routers configurados.
  */
 export function bootstrap(): AppRouters {
-  // Inicializa a database.
+  // Passo 1: infra externa.
   const db = getDatabase();
+  const redisClient = getRedisClient();
 
-  // Instanciar o repositório com a conexão.
-  // DrizzleMetricsRepository implementa a interface MetricsRepository
-  // definida na application layer. O use case não sabe que é Drizzle.
-  const metricsRepository = new DrizzleMetricsRepository(db);
+  // Passo 2: serviço de cache
+  // RedisMetricsCache implementa MetricsCacheService com estratégia Cache-Aside.
+  const metricsCache = new RedisMetricsCache(redisClient);
 
-  // Instanciar os serviços de suporte.
-  const cacheService = new NoOpMetricsCacheService();
+  // Passo 3: repositório com cache injectado
+  // DrizzleMetricsRepository usa o cache em getRecent() e invalida em save().
+  const metricsRepository = new DrizzleMetricsRepository(db, metricsCache);
+
+  // TODO: Passo 4: serviço de queue (NoOp por enquanto — implementado no Sprint 3)
   const aggregationQueue = new NoOpAggregationQueueService();
 
-  // Instanciar o use case com o repositório e serviços.
-  // RecordMetricUseCase recebe as interfaces, não as implementações concretas.
-  const recordMetricUseCase = new RecordMetricUseCase(
-    metricsRepository,
-    cacheService,
-    aggregationQueue
-  );
+  // Passo 5: use case com repositório e queue
+  const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
 
-  // Instanciar o controller com o use case.
+  // Passo 6: controller e router
   const metricsController = new MetricsController(recordMetricUseCase);
-
-  // Criar o router de métricas com o controller.
   const metricsRouter = createMetricsRouter(metricsController);
 
   return { metricsRouter };

@@ -5,8 +5,11 @@
 
 import 'dotenv/config';
 
-import { createApp, startServer } from '@infra/frameworks/express/app';
+import { createApp, registerRoutes, startServer } from '@infra/frameworks/express/app';
+import { bootstrap } from '@infra/frameworks/express/bootstrap';
 import { loadConfig } from '@infra/frameworks/config';
+import { closeDatabaseConnection } from '@infra/frameworks/database';
+import { disconnectRedis } from '@infra/frameworks/cache/redis';
 import { logger } from '@infra/frameworks/logging';
 
 /**
@@ -24,23 +27,20 @@ async function main(): Promise<void> {
       environment: config.NODE_ENV,
     });
 
-    // Cria a aplicação Express configurada
     const app = createApp();
-
-    // Inicia o servidor HTTP na porta configurada
+    const routers = bootstrap();
+    registerRoutes(app, routers);
     startServer(app, config.PORT);
 
-    // Graceful shutdown
-    // Quando Ctrl+C ou SIGTERM é recebido, encerra o servidor
-    process.on('SIGINT', () => {
-      logger.info('server_shutting_down', { signal: 'SIGINT' });
+    const shutdown = async (signal: string): Promise<void> => {
+      logger.info('server_shutting_down', { signal });
+      await closeDatabaseConnection();
+      await disconnectRedis();
       process.exit(0);
-    });
+    };
 
-    process.on('SIGTERM', () => {
-      logger.info('server_shutting_down', { signal: 'SIGTERM' });
-      process.exit(0);
-    });
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
   } catch (error) {
     // Log: Erro ao iniciar o servidor
     logger.error('server_startup_failed', {

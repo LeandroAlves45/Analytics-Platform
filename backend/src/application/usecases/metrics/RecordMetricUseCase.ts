@@ -5,20 +5,15 @@
  * O que este use case faz, por ordem:
  * 1. Verifica se o request já foi processado (idempotência)
  * 2. Cria a entidade Metric (validações de domínio executadas aqui)
- * 3. Persiste a métrica
- * 4. Invalida cache do dashboard
- * 5. Agenda worker de agregação
- * 6. Devolve confirmação ao controller
+ * 3. Persiste a métrica (o repositório invalida o cache internamente)
+ * 4. Agenda worker de agregação
+ * 5. Devolve confirmação ao controller
  */
 
 import { Metric } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
-import {
-  MetricsRepository,
-  MetricsCacheService,
-  AggregationQueueService,
-} from '@application/contracts/repositories';
+import { MetricsRepository, AggregationQueueService } from '@application/contracts/repositories';
 import { RecordMetricInputDTO, RecordMetricOutputDTO } from '@application/dto/MetricsDTO';
 
 /**
@@ -30,7 +25,6 @@ export class RecordMetricUseCase {
   // Isto permite substituir por mocks nos testes unitários.
   constructor(
     private readonly metricsRepository: MetricsRepository,
-    private readonly cacheService: MetricsCacheService,
     private readonly aggregationQueue: AggregationQueueService
   ) {}
 
@@ -90,21 +84,7 @@ export class RecordMetricUseCase {
       });
     }
 
-    // Passo 4: invalidar cache.
-    // Não bloqueamos a resposta em caso de falha — cache é best-effort.
-    // O dashboard simplesmente vai buscar dados à DB directamente.
-    try {
-      await this.cacheService.invalidate(input.workspaceId);
-    } catch (error) {
-      // Logger como warning para rastreabilidade, mas não bloqueamos a resposta.
-      logger.warn('cache_invalidation_failed', {
-        workspaceId: input.workspaceId,
-        error,
-      });
-      // Não re-lançamos erro, métrica já foi guardada com sucesso.
-    }
-
-    // Passo 5: agendar agregação em background.
+    // Passo 4: agendar agregação em background.
     // Também best-effort -> o worker de retry trata de falhas de fila.
     try {
       await this.aggregationQueue.scheduleAggregation(input.workspaceId, input.endpoint);

@@ -25,16 +25,6 @@ export interface MetricsRepository {
 }
 
 /**
- * Contrato para o serviço de cache (Redis).
- * Implementado por RedisMetricsCache na camada infra.
- */
-export interface MetricsCacheService {
-  // Invalida o cache de um workspace quando novas métricas chegam.
-  // O dashboard vai buscar dados frescos na próxima query.
-  invalidate(workspaceId: string): Promise<void>;
-}
-
-/**
  * Contrato para o serviço de fila (BullMQ).
  * Implementado por BullMQAggregationService na camada infra.
  */
