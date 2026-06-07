@@ -50,11 +50,26 @@ type IngestMetricBody = z.infer<typeof ingestMetricSchema>;
 /**
  * Extensão do tipo Request do Express para incluir campos que o AuthMiddleware
  * vai adicionar após validar a API Key.
+ *
+ * Exportado para que os testes de integração possam simular o AuthMiddleware
+ * (ainda não implementado — sprint 6) ao tipar o `req` injectado.
  */
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   workspaceId?: string;
   apiKeyId?: string;
 }
+
+/**
+ * UUIDs de fallback usados enquanto o AuthMiddleware não está implementado.
+ *
+ * Têm de ser UUIDs válidos: `Metric` valida o formato de `workspaceId`/`apiKeyId`
+ * e rejeita strings como 'dev-workspace-id'. Sem isto, POST /api/metrics
+ * devolveria sempre 422 em qualquer ambiente sem autenticação.
+ *
+ * TODO(leandro): remover assim que o AuthMiddleware preencher req.workspaceId/req.apiKeyId (sprint 6)
+ */
+const DEV_WORKSPACE_ID = '00000000-0000-4000-8000-000000000000';
+const DEV_API_KEY_ID = '00000000-0000-4000-8000-000000000001';
 
 /**
  * Controller para ingestão de métricas.
@@ -91,8 +106,8 @@ export class MetricsController {
 
     // Estes campos são injectados pelo AuthMiddleware antes de chegar aqui.
     // TODO: Irão ser feitos no sprint 6.
-    const workspaceId = req.workspaceId ?? 'dev-workspace-id';
-    const apiKeyId = req.apiKeyId ?? 'dev-api-key-id';
+    const workspaceId = req.workspaceId ?? DEV_WORKSPACE_ID;
+    const apiKeyId = req.apiKeyId ?? DEV_API_KEY_ID;
 
     // Passo 3: chamar o use case com os dados formatados.
     // Qualquer erro lançado pelo use case (ValidationError, AppError) é passado

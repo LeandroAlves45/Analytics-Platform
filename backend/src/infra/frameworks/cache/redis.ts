@@ -1,13 +1,14 @@
 /**
  * Módulo de conexão Redis usando ioredis.
  *
- * Segue o mesmo padrão de singleton lazy do connection.ts da base de dados:
- * - A instância é criada na primeira chamada a getRedisClient()
- * - Todas as chamadas subsequentes recebem a mesma instância
- * - O cliente é fechado explicitamente via disconnectRedis() no shutdown
+ * Segue o mesmo padrão de singleton explícito do connection.ts da base de dados:
+ * - initializeRedis() é chamado uma vez em main.ts com a URL validada pelo loadConfig()
+ * - getRedisClient() devolve a instância já inicializada
+ * - checkRedisConnection() verifica disponibilidade via PING (usado em /ready)
+ * - disconnectRedis() fecha a ligação no graceful shutdown
  *
- * Esta abordagem garante que toda a aplicação partilha uma única
- * conexão TCP ao Redis, evitando desperdício de recursos.
+ * O cache é best-effort: se Redis falhar, o repositório faz fallback à BD.
+ * Por isso usamos timeouts e retries limitados — não bloqueamos requests indefinidamente.
  */
 
 import Redis from 'ioredis';
@@ -16,44 +17,53 @@ import { logger } from '@infra/frameworks/logging';
 // Instância singleton de Redis
 let redisClient: Redis | null = null;
 
+/** Erros de rede onde o ioredis deve tentar reconectar automaticamente */
+const RECONNECT_ON_ERRORS_MESSAGES = ['READONLY', 'ECONNRESET', 'ETIMEOUT'] as const;
+
 /**
- * Devolve (e cria se necessário) o cliente Redis singleton.
+ * Mascara credenciais na URL Redis para logs.
+ * Ex: redis://user:pass@host:6379 → redis://<credentials>@host:6379
  *
- * Lê REDIS_URL das variáveis de ambiente. Esta variável deve estar
- * presente em todos os ambientes (development, test, production).
- *
- * O ioredis tenta reconectar automaticamente em caso de falha de rede
- * com backoff exponencial — não precisamos de gerir isso manualmente.
- *
- * @returns Instância singleton do cliente Redis
- * @throws Error se REDIS_URL não estiver definida
+ * @param redisUrl - URL de ligação Redis
+ * @returns URL com credenciais substituídas
  */
-export function getRedisClient(): Redis {
+function maskRedisUrl(redisUrl: string): string {
+  return redisUrl.replace(/\/\/.*@/, '//<credentials>@');
+}
+
+/**
+ * Inicializa o cliente Redis singleton.
+ * Deve ser chamada uma vez em main.ts, após loadConfig(), com config.REDIS_URL.
+ *
+ * @param redisUrl - URL de ligação validada pelo schema Zod
+ * @returns Instância do cliente Redis
+ * @throws Error se já estiver inicializado com URL diferente
+ */
+export function initializeRedis(redisUrl: string): Redis {
   if (redisClient !== null) {
     return redisClient;
   }
 
-  const redisUrl = process.env['REDIS_URL'];
-
-  if (!redisUrl) {
-    throw new Error('REDIS_URL environment variable is not defined');
-  }
+  logger.info('initializing_redis', { url: maskRedisUrl(redisUrl) });
 
   // Cria a instância Redis com configuração explícita de reconnect
   redisClient = new Redis(redisUrl, {
-    // Número máximo de tentativas de reconnect. null = infinitas tentativas
+    // Retries por comando — evita bloqueio infinito quando Redis está down.
     maxRetriesPerRequest: null,
-    // Estratégia de reconnect com backoff exponencial entre tentativas
-    // Começa em 50ms, dobra a cada tentativa até ao máximo de 2000ms
+
+    // Timeout em ms -> falham rápido para o cache degradar para BD
+    connectTimeout: 5_000,
+    commandTimeout: 5_000,
+
+    // Reconecta automaticamente em erros de rede recuperáveis
     reconnectOnError: (error) => {
-      const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEOUT'];
-      return targetErrors.some((msg) => error.message.includes(msg));
+      return RECONNECT_ON_ERRORS_MESSAGES.some((msg) => error.message.includes(msg));
     },
   });
 
   // Registo de eventos de ciclo de vida para observabilidade
   redisClient.on('connect', () => {
-    logger.info('redis_connected', { url: redisUrl.replace(/\/\/.*@/, '//<credentials>@') });
+    logger.info('redis_connected', { url: maskRedisUrl(redisUrl) });
   });
 
   redisClient.on('ready', () => {
@@ -77,14 +87,49 @@ export function getRedisClient(): Redis {
 }
 
 /**
+ * Devolve a instância Redis já inicializada.
+ * Deve ser chamada após initializeRedis() em main.ts.
+ *
+ * @returns Instância singleton do cliente Redis
+ * @throws Error se Redis não foi inicializado
+ */
+export function getRedisClient(): Redis {
+  if (redisClient === null) {
+    throw new Error('Redis not initialized. Call initializeRedis() in main.ts first.');
+  }
+  return redisClient;
+}
+
+/**
+ * Verifica se o Redis está acessível executando PING.
+ * Usado no endpoint /ready — falha silenciosa devolve false, não lança.
+ *
+ * @returns true se PING respondeu PONG, false caso contrário
+ */
+export async function checkRedisConnection(): Promise<boolean> {
+  if (redisClient === null) {
+    return false;
+  }
+
+  try {
+    const response = await redisClient.ping();
+    return response === 'PONG';
+  } catch (error) {
+    logger.error('redis_health_check_failed', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return false;
+  }
+}
+
+/**
  * Fecha a conexão Redis de forma controlada.
  *
- * quit() envia o comando QUIT ao servidor Redis antes de fechar,
- * garantindo que operações em curso terminam. É a alternativa
- * correcta a disconnect() que fecha a socket imediatamente.
+ * quit() envia QUIT ao servidor antes de fechar a socket,
+ * permitindo que operações em curso terminem graciosamente.
  *
  * Deve ser chamado no handler de graceful shutdown em main.ts,
- * a seguir ao encerramento da base de dados.
+ * a seguir a closeDatabaseConnection().
  */
 export async function disconnectRedis(): Promise<void> {
   if (redisClient === null) {

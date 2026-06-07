@@ -7,13 +7,15 @@
 #
 # Jobs e ordem de execução:
 #
-#   lint ──────┐
-#   test ──────┼── build (só corre se todos os jobs passarem)
-#   sdk-lint ──┤
-#   sdk-test ──┘
+#   lint ──────────────┐
+#   test-unit ─────────┼── build (só corre se todos os jobs passarem)
+#   test-integration ──┤   (integração só em push para main/develop)
+#   sdk-lint ──────────┤
+#   sdk-test ──────────┘
 #
-# lint, test, sdk-lint e sdk-test correm em paralelo.
-# build só corre se todos passarem (usa "needs").
+# Estratégia de testes:
+#   - pull_request: apenas testes unitários (rápido, sem BD)
+#   - push (merge): unitários + integração (suite completa com PostgreSQL)
 
 name: CI
 
@@ -61,9 +63,41 @@ jobs:
       - name: Run TypeScript type check
         run: npm run type-check
 
-  test:
-    name: Tests
+  test-unit:
+    name: Unit Tests
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage:unit -- --forceExit
+
+      - name: Upload unit coverage report
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: backend
+          flags: unit
+          fail_ci_if_error: false
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Suite completa só após merge — PRs correm apenas test-unit
+    if: github.event_name == 'push'
 
     services:
       postgres:
@@ -76,16 +110,6 @@ jobs:
           - '5432:5432'
         options: >-
           --health-cmd "pg_isready -U analytics_user -d analytics_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - '6379:6379'
-        options: >-
-          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -117,9 +141,7 @@ jobs:
           DATABASE_USER=analytics_user
           DATABASE_PASSWORD=analytics_password
           DATABASE_NAME=analytics_test
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          REDIS_DB=0
+          REDIS_URL=redis://localhost:6379/0
           JWT_SECRET=test-jwt-secret-not-for-production
           JWT_EXPIRES_IN=1h
           EOF
@@ -144,8 +166,8 @@ jobs:
           DATABASE_PASSWORD: analytics_password
           DATABASE_NAME: analytics_test
 
-      - name: Run tests with coverage
-        run: npm run test -- --coverage --forceExit
+      - name: Run integration tests with coverage
+        run: npm run test:coverage:integration -- --forceExit
         env:
           NODE_ENV: test
           LOG_LEVEL: error
@@ -154,20 +176,19 @@ jobs:
           DATABASE_USER: analytics_user
           DATABASE_PASSWORD: analytics_password
           DATABASE_NAME: analytics_test
+          REDIS_URL: redis://localhost:6379/0
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           REDIS_DB: 0
           JWT_SECRET: test-jwt-secret-not-for-production
 
-      # Upload para Codecov — token em GitHub Secrets (Settings → Secrets → Actions).
-      # Adiciona CODECOV_TOKEN com o mesmo valor do teu .env local.
-      # fail_ci_if_error: false evita bloquear o CI se o upload falhar.
-      - name: Upload coverage report
+      - name: Upload integration coverage report
         if: always()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: backend
+          flags: integration
           fail_ci_if_error: false
 
   sdk-lint:
@@ -227,7 +248,14 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test, sdk-lint, sdk-test]
+    needs: [lint, test-unit, test-integration, sdk-lint, sdk-test]
+    if: >
+      always() &&
+      needs.lint.result == 'success' &&
+      needs.test-unit.result == 'success' &&
+      (needs.test-integration.result == 'success' || needs.test-integration.result == 'skipped') &&
+      needs.sdk-lint.result == 'success' &&
+      needs.sdk-test.result == 'success'
     permissions:
       contents: read
       packages: write

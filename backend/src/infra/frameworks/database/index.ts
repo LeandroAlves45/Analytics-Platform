@@ -9,6 +9,7 @@ export {
   initializeDatabase,
   closeDatabaseConnection,
   checkDatabaseConnection,
+  getDatabase,
   type Database,
 } from './connection';
 

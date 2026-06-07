@@ -22,7 +22,7 @@ services:
 
     # Mapeamento de portas: porta_do_host:porta_do_container
     ports:
-      - "5432:5432"
+      - '5432:5432'
 
     # Volume persistente: os dados da base de dados não se perdem
     volumes:
@@ -33,7 +33,7 @@ services:
 
     # Healthcheck: verifica se o PostgreSQL está a funcionar
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      test: ['CMD-SHELL', 'pg_isready -U $POSTGRES_USER -d $POSTGRES_DB']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,7 +51,7 @@ services:
 
     # Porta padrão do Redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
 
     # Volume persistente: os dados do Redis não se perdem
     volumes:
@@ -59,7 +59,7 @@ services:
 
     # Healthcheck: verifica se o Redis está a funcionar
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: ['CMD-SHELL', 'redis-cli ping | grep PONG']
       interval: 10s
       timeout: 5s
       retries: 5

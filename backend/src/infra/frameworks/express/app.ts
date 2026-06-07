@@ -1,23 +1,17 @@
 /**
  * Configuração base da aplicação Express.
  *
- * Este ficheiro tem duas responsabilidades separadas:
- *
- *   createApp()       — cria a app com middleware de infra (parsing, CORS,
- *                       logging, health checks). Não conhece rotas de negócio.
- *
- *   registerRoutes()  — monta os routers de negócio e os handlers terminais
- *                       (404 e error handler). Chamada depois de createApp().
- *
- * Separar as duas funções permite que testes de integração criem a app base
- * e montem apenas os routers relevantes para cada teste.
+ *   createApp()       — middleware de infra + health checks
+ *   registerRoutes()  — routers de negócio + 404 + error handler
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { AppRouters } from './bootstrap';
-import { logger } from '../../frameworks/logging';
-import { errorHandlerMiddleware } from '../../middleware/ErrorHandlerMiddleware';
-import { ErrorCodes } from '../../../shared/errors';
+import { logger } from '@infra/frameworks/logging';
+import { checkDatabaseConnection } from '@infra/frameworks/database/connection';
+import { checkRedisConnection } from '@infra/frameworks/cache/redis';
+import { errorHandlerMiddleware } from '@infra/middleware/ErrorHandlerMiddleware';
+import { ErrorCodes } from '@shared/errors';
 
 // Estender a interface Request do Express com o campo id
 declare global {
@@ -30,17 +24,8 @@ declare global {
 
 /**
  * Cria a aplicação Express com middleware de infra.
- * Não regista rotas de negócio — isso é responsabilidade de registerRoutes().
  *
- * Middleware registado aqui (por ordem):
- *   1. express.json()  — parseia body JSON de todos os requests
- *   2. requestId       — atribui ID único a cada request para correlação de logs
- *   3. requestLogger   — loga método, path e duração de cada request
- *   4. cors            — cabeçalhos de controlo de acesso cross-origin
- *   5. /health         — liveness probe (está o servidor vivo?)
- *   6. /ready          — readiness probe (está pronto para tráfego?)
- *
- * @returns Instância Express configurada com middleware de infra.
+ * @returns Instância Express configurada com middleware de infra
  */
 export function createApp(): Express {
   const app = express();
@@ -88,32 +73,41 @@ export function createApp(): Express {
     next();
   });
 
-  // Liveness probe — o orquestrador (Kubernetes, Railway) usa este endpoint
+  // Liveness probe —> o orquestrador (Kubernetes, Railway) usa este endpoint
   // para saber se o processo está vivo. Responde sempre 200 se o servidor correr.
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Readiness probe — indica se a app está pronta para receber tráfego.
-  // Num sistema com base de dados, aqui verificaríamos a conexão.
-  app.get('/ready', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ready', timestamp: new Date().toISOString() });
+  /**
+   * Readiness — pronto para tráfego.
+   *
+   * - BD down  → 503, status: 'not_ready' (app não pode servir requests de negócio)
+   * - Redis down → 200, status: 'degraded' (cache degradado, BD funciona)
+   * - Ambos ok → 200, status: 'ready'
+   */
+  app.get('/ready', async (_req: Request, res: Response) => {
+    const [dbOk, redisOk] = await Promise.all([checkDatabaseConnection(), checkRedisConnection()]);
+
+    const isReady = dbOk;
+    const status = !isReady ? 'not_ready' : redisOk ? 'ready' : 'degraded';
+
+    res.status(isReady ? 200 : 503).json({
+      status,
+      db: dbOk,
+      redis: redisOk,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   return app;
 }
 
 /**
- * Monta os routers de negócio e os handlers terminais na app Express.
+ * Monta routers de negócio e handlers terminais.
  *
- * Deve ser chamada DEPOIS de createApp() e ANTES de startServer().
- * A ordem interna desta função também importa:
- *   1. Routers de negócio   — respondem a rotas conhecidas
- *   2. 404 handler          — apanha rotas desconhecidas (depois dos routers)
- *   3. errorHandlerMiddleware — apanha erros de tudo o que veio acima (sempre último)
- *
- * @param app     — Instância Express criada por createApp().
- * @param routers — Routers de negócio criados pelo bootstrap().
+ * @param app     — Instância Express criada por createApp()
+ * @param routers — Routers criados pelo bootstrap()
  */
 export function registerRoutes(app: Express, routers: AppRouters): void {
   app.use('/api/metrics', routers.metricsRouter);
@@ -137,8 +131,10 @@ export function registerRoutes(app: Express, routers: AppRouters): void {
 }
 
 /**
- * Inicializa o servidor HTTP
- * @param port Porta para o servidor (3000 por padrão)
+ * Inicia o servidor HTTP.
+ *
+ * @param app  — Instância Express configurada
+ * @param port — Porta de escuta (default 3000)
  */
 export function startServer(app: Express, port: number = 3000): void {
   app.listen(port, () => {

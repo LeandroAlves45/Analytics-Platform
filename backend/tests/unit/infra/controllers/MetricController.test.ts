@@ -5,13 +5,22 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { MetricsController } from '@infra/controllers/MetricsController';
+import { MetricsController, AuthenticatedRequest } from '@infra/controllers/MetricsController';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import { ValidationError, AppError } from '@shared/errors';
-import { TEST_REQUEST_ID } from '../../../../tests/fixtures/metrics';
+import { isValidUuid } from '@shared/validation/uuid';
+import {
+  TEST_REQUEST_ID,
+  TEST_WORKSPACE_ID,
+  TEST_API_KEY_ID,
+} from '../../../../tests/fixtures/metrics';
 
 // Criar o mock do Express Request com os campos minimos necessários.
-const createMockRequest = (overrides: Partial<Request> = {}): Partial<Request> => ({
+// Tipado como AuthenticatedRequest para permitir simular workspaceId/apiKeyId
+// injectados pelo (futuro) AuthMiddleware.
+const createMockRequest = (
+  overrides: Partial<AuthenticatedRequest> = {}
+): Partial<AuthenticatedRequest> => ({
   body: {
     endpoint: '/api/users',
     method: 'GET',
@@ -252,6 +261,46 @@ describe('MetricsController', () => {
       await controller.ingest(req as Request, res as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalledWith(unexpectedError);
+    });
+  });
+
+  // Grupo 4: derivação de workspaceId/apiKeyId (contexto de tenant).
+  // O cliente nunca indica o seu próprio workspace no body — vem sempre
+  // do contexto de autenticação (req.workspaceId/req.apiKeyId), injectado
+  // pelo AuthMiddleware (sprint 6).
+  describe('ingest -> tenant context (workspaceId/apiKeyId)', () => {
+    it('should call use case with workspaceId/apiKeyId from authenticated request', async () => {
+      const req = createMockRequest({
+        workspaceId: TEST_WORKSPACE_ID,
+        apiKeyId: TEST_API_KEY_ID,
+      });
+      const res = createMockResponse();
+
+      await controller.ingest(req as AuthenticatedRequest, res as Response, mockNext);
+
+      expect(mockUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: TEST_WORKSPACE_ID,
+          apiKeyId: TEST_API_KEY_ID,
+        })
+      );
+    });
+
+    it('should fall back to a valid UUID when request has no authenticated workspaceId/apiKeyId', async () => {
+      // Sem AuthMiddleware, req.workspaceId/req.apiKeyId chegam undefined.
+      // O fallback do controller TEM de ser um UUID válido — a entidade Metric
+      // rejeita formatos não-UUID (ex: 'dev-workspace-id'), o que faria o
+      // endpoint devolver sempre 422 enquanto o AuthMiddleware não existir.
+      const req = createMockRequest();
+      const res = createMockResponse();
+
+      await controller.ingest(req as AuthenticatedRequest, res as Response, mockNext);
+
+      const [callArgs] = mockUseCase.execute.mock.calls[0] as [
+        { workspaceId: string; apiKeyId: string },
+      ];
+      expect(isValidUuid(callArgs.workspaceId)).toBe(true);
+      expect(isValidUuid(callArgs.apiKeyId)).toBe(true);
     });
   });
 });

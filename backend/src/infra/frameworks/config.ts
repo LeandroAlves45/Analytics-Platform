@@ -2,6 +2,9 @@
 /**
  * Configuração global de variáveis de ambiente
  * Carrega variáveis do arquivo .env
+ *
+ * Todas as ligações de infra (BD, Redis) devem obter valores
+ * do objecto devolvido por loadConfig() — nunca de process.env directamente.
  */
 
 import dotenv from 'dotenv';
@@ -16,7 +19,7 @@ dotenv.config();
 const envSchema = z.object({
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
 
   // Server
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -30,9 +33,7 @@ const envSchema = z.object({
   DATABASE_PASSWORD: z.string().min(1),
 
   // Redis
-  REDIS_HOST: z.string().min(1).default('localhost'),
-  REDIS_PORT: z.coerce.number().int().default(6379),
-  REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
+  REDIS_URL: z.string().url().min(1),
 
   // JWT
   JWT_SECRET: z.string().min(1),
