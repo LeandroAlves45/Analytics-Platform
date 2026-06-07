@@ -18,7 +18,7 @@ describe('RecordMetricUseCase', () => {
 
   beforeEach(() => {
     metricsRepository = {
-      save: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn().mockResolvedValue('saved'),
       existsByRequestId: jest.fn().mockResolvedValue(false),
       getRecent: jest.fn().mockResolvedValue([]),
     };
@@ -102,6 +102,23 @@ describe('RecordMetricUseCase', () => {
         statusCode: 409,
         code: 'CONFLICT',
       });
+    });
+
+    it('should throw 409 when repository save returns duplicate (concurrent race)', async () => {
+      metricsRepository.save.mockResolvedValue('duplicate');
+
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'CONFLICT',
+      });
+    });
+
+    it('should not schedule aggregation when save returns duplicate', async () => {
+      metricsRepository.save.mockResolvedValue('duplicate');
+
+      await expect(useCase.execute(validInput)).rejects.toThrow(AppError);
+
+      expect(aggregationQueue.scheduleAggregation).not.toHaveBeenCalled();
     });
   });
 

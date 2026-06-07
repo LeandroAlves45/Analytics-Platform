@@ -41,14 +41,14 @@ export interface AppRouters {
  *
  * @returns Objecto com todos os routers configurados.
  */
-export function bootstrap(): AppRouters {
+export function bootstrap(metricsCacheTtlSeconds: number): AppRouters {
   // Passo 1: infra externa.
   const db = getDatabase();
   const redisClient = getRedisClient();
 
   // Passo 2: serviço de cache
   // RedisMetricsCache implementa MetricsCacheService com estratégia Cache-Aside.
-  const metricsCache = new RedisMetricsCache(redisClient);
+  const metricsCache = new RedisMetricsCache(redisClient, metricsCacheTtlSeconds);
 
   // Passo 3: repositório com cache injectado
   // DrizzleMetricsRepository usa o cache em getRecent() e invalida em save().

@@ -38,6 +38,13 @@ async function main(): Promise<void> {
     initializeDatabase(databaseURL);
     const isDatabaseReady = await checkDatabaseConnection();
 
+    if (!isDatabaseReady) {
+      logger.error('database_not_ready_at_startup', {
+        message: 'Cannot start server without database connection',
+      });
+      process.exit(1);
+    }
+
     // Inicializa Redis
     initializeRedis(config.REDIS_URL);
 
@@ -59,7 +66,7 @@ async function main(): Promise<void> {
     });
 
     const app = createApp();
-    const routers = bootstrap();
+    const routers = bootstrap(config.METRICS_CACHE_TTL_SECONDS);
     registerRoutes(app, routers);
     startServer(app, config.PORT);
 

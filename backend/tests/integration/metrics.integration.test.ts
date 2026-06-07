@@ -206,6 +206,28 @@ describe('POST /api/metrics -> integration test', () => {
       const rows = await db.select().from(metricsRaw);
       expect(rows).toHaveLength(2);
     });
+
+    it('should reject concurrent duplicate requestId with 409', async () => {
+      const app = getTestApp();
+      const requestId = createUniqueRequestId();
+      const payload = { ...validPayload, requestId };
+
+      const responses = await Promise.all([
+        request(app).post('/api/metrics').send(payload).set('Content-Type', 'application/json'),
+        request(app).post('/api/metrics').send(payload).set('Content-Type', 'application/json'),
+      ]);
+
+      const statusCodes = responses.map((res) => res.status).sort();
+
+      // Exatamente um sucessoe um conflito
+      expect(statusCodes).toEqual([202, 409]);
+
+      const db = getDatabase();
+      const rows = await db.select().from(metricsRaw).where(eq(metricsRaw.requestId, requestId));
+
+      // Deve existir apenas uma linha na BD
+      expect(rows).toHaveLength(1);
+    });
   });
 
   // Grupo 3: Validação Zod
@@ -280,6 +302,18 @@ describe('POST /api/metrics -> integration test', () => {
 
       // Não deve existir nenhuma linha na BD
       expect(rows).toHaveLength(0);
+    });
+
+    it('should return 422 when payloadSizeBytes is zero', async () => {
+      const app = getTestApp();
+
+      const res = await request(app)
+        .post('/api/metrics')
+        .send({ ...validPayload, payloadSizeBytes: 0, requestId: createUniqueRequestId() })
+        .set('Content-Type', 'application/json');
+
+      expect(res.status).toBe(422);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 

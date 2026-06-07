@@ -34,6 +34,7 @@ const envSchema = z.object({
 
   // Redis
   REDIS_URL: z.string().url().min(1),
+  METRICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
   // JWT
   JWT_SECRET: z.string().min(1),

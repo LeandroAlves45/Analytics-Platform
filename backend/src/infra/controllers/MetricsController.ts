@@ -1,16 +1,18 @@
 /**
- *O MetricsController é o adaptador entre HTTP e o use case RecordMetricUseCase.
- * Responsabilidades exclusivas deste controller:
- *   1. Validar a forma dos dados HTTP com Zod
- *   2. Extrair dados relevantes do request
- *   3. Chamar o use case com os dados formatados
- *   4. Formatar e enviar a resposta HTTP
+ * MetricsController — adaptador HTTP para RecordMetricUseCase.
+ *
+ * Responsabilidades:
+ *   1. Validar o body com Zod
+ *   2. Resolver contexto de tenant (workspaceId / apiKeyId)
+ *   3. Chamar o use case
+ *   4. Formatar a resposta HTTP
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
+import { UnauthorizedError } from '@shared/errors';
 
 /**
  * Schema Zod para validar o body do request de ingestão.
@@ -36,7 +38,11 @@ const ingestMetricSchema = z.object({
   statusCode: z.number('statusCode is required').int('statusCode must be an integer'),
   requestId: z.string().min(1, 'RequestId is required'),
   // Campos opcionais:
-  payloadSizeBytes: z.number().int().nonnegative().optional(),
+  payloadSizeBytes: z
+    .number()
+    .int('payloadSizeBytes must be an integer')
+    .positive('payloadSizeBytes must be positive')
+    .optional(),
   userAgent: z.string().optional(),
   ipAddress: z.string().optional(),
 });
@@ -48,11 +54,10 @@ const ingestMetricSchema = z.object({
 type IngestMetricBody = z.infer<typeof ingestMetricSchema>;
 
 /**
- * Extensão do tipo Request do Express para incluir campos que o AuthMiddleware
- * vai adicionar após validar a API Key.
+ * Request autenticado — workspaceId e apiKeyId são injectados pelo AuthMiddleware.
  *
- * Exportado para que os testes de integração possam simular o AuthMiddleware
- * (ainda não implementado — sprint 6) ao tipar o `req` injectado.
+ * Em testes de integração, simulateAuthMiddleware preenche estes campos.
+ * Em produção sem ambos, resolveTenantContext rejeita o pedido com 401.
  */
 export interface AuthenticatedRequest extends Request {
   workspaceId?: string;
@@ -60,16 +65,46 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * UUIDs de fallback usados enquanto o AuthMiddleware não está implementado.
+ * UUIDs de fallback para ambientes não-produção enquanto o AuthMiddleware
+ * (Sprint 6) não injecta req.workspaceId / req.apiKeyId.
  *
- * Têm de ser UUIDs válidos: `Metric` valida o formato de `workspaceId`/`apiKeyId`
- * e rejeita strings como 'dev-workspace-id'. Sem isto, POST /api/metrics
- * devolveria sempre 422 em qualquer ambiente sem autenticação.
+ * Em produção, pedidos sem contexto de autenticação recebem 401 — estes IDs
+ * nunca são usados quando NODE_ENV === 'production'.
  *
- * TODO(leandro): remover assim que o AuthMiddleware preencher req.workspaceId/req.apiKeyId (sprint 6)
+ * TODO(leandro): remover fallback quando AuthMiddleware estiver activo (#sprint-6)
  */
 const DEV_WORKSPACE_ID = '00000000-0000-4000-8000-000000000000';
 const DEV_API_KEY_ID = '00000000-0000-4000-8000-000000000001';
+
+/**
+ * Resolve workspaceId e apiKeyId a partir do request autenticado.
+ *
+ * - Com ambos presentes: usa os valores injectados pelo AuthMiddleware (ou test double).
+ * - Em produção sem contexto: lança UnauthorizedError (401 via ErrorHandlerMiddleware).
+ * - Em development/test: fallback para DEV_* UUIDs para permitir ingestão local.
+ *
+ * TODO(leandro): remover fallback DEV quando AuthMiddleware exigir auth em todos os ambientes (#sprint-6)
+ */
+function resolveTenantContext(req: AuthenticatedRequest): {
+  workspaceId: string;
+  apiKeyId: string;
+} {
+  const workspaceId = req.workspaceId;
+  const apiKeyId = req.apiKeyId;
+
+  if (workspaceId && apiKeyId) {
+    return { workspaceId, apiKeyId };
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new UnauthorizedError('API key authentication required');
+  }
+
+  return {
+    workspaceId: workspaceId ?? DEV_WORKSPACE_ID,
+    apiKeyId: apiKeyId ?? DEV_API_KEY_ID,
+  };
+}
 
 /**
  * Controller para ingestão de métricas.
@@ -101,13 +136,18 @@ export class MetricsController {
       return;
     }
 
-    // Passo 2: extrair dados válidados e contexto de autenticação.
     const body: IngestMetricBody = parseResult.data;
 
-    // Estes campos são injectados pelo AuthMiddleware antes de chegar aqui.
-    // TODO: Irão ser feitos no sprint 6.
-    const workspaceId = req.workspaceId ?? DEV_WORKSPACE_ID;
-    const apiKeyId = req.apiKeyId ?? DEV_API_KEY_ID;
+    // Passo 2: contexto de tenant — AuthMiddleware (prod) ou fallback DEV (local/CI).
+    let workspaceId: string;
+    let apiKeyId: string;
+
+    try {
+      ({ workspaceId, apiKeyId } = resolveTenantContext(req));
+    } catch (error) {
+      next(error);
+      return;
+    }
 
     // Passo 3: chamar o use case com os dados formatados.
     // Qualquer erro lançado pelo use case (ValidationError, AppError) é passado

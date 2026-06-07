@@ -64,7 +64,16 @@ export class RecordMetricUseCase {
     // Passo 3: persistir a métrica.
     // Fazemos wrap do erro de persistência para não expor detalhes da DB.
     try {
-      await this.metricsRepository.save(metric);
+      const result = await this.metricsRepository.save(metric);
+
+      if (result === 'duplicate') {
+        logger.info('metric_already_recorded_on_save', {
+          requestId: input.requestId,
+          workspaceId: input.workspaceId,
+        });
+
+        throw new AppError('Metric with this requestId was already recorded', 'CONFLICT', 409);
+      }
     } catch (error) {
       logger.error('metric_save_failed', {
         requestId: input.requestId,

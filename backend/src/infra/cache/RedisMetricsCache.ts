@@ -19,13 +19,6 @@ import type { MetricsCacheService } from '@application/contracts/cache';
 import { logger } from '@infra/frameworks/logging';
 
 /**
- * TTL em segundos para entradas de cache de métricas recentes.
- * 5 minutos é o equilíbrio entre frescura dos dados e redução de carga na BD.
- * Dashboards com polling de 10s verão dados com no máximo 5 min de desfasamento.
- */
-const RECENT_METRICS_TTL_SECONDS = parseInt(process.env['METRICS_CACHE_TTL_SECONDS'] ?? '300', 10);
-
-/**
  * Prefixo de todas as chaves de cache deste serviço.
  * Facilita namespace isolation se partilharmos a instância Redis com outros serviços.
  */
@@ -34,7 +27,10 @@ const KEY_PREFIX = 'metrics:recent';
 export class RedisMetricsCache implements MetricsCacheService {
   // Recebemos o cliente ioredis por injecção de dependências.
   // O bootstrap é responsável por criar e injectar esta instância.
-  constructor(private readonly redis: Redis) {}
+  constructor(
+    private readonly redis: Redis,
+    private readonly recentMetricsTtlSeconds: number
+  ) {}
 
   /**
    * Tenta ler métricas do cache para um workspace e janela de tempo.
@@ -100,13 +96,13 @@ export class RedisMetricsCache implements MetricsCacheService {
       const serialized = JSON.stringify(metrics.map((metric) => this.serializeMetric(metric)));
 
       // SETEX é atómico: SET + EXPIRE define valor e TTL ao mesmo tempo
-      await this.redis.setex(key, RECENT_METRICS_TTL_SECONDS, serialized);
+      await this.redis.setex(key, this.recentMetricsTtlSeconds, serialized);
 
       logger.debug('metrics_cache_set', {
         workspaceId,
         minutes,
         count: metrics.length,
-        ttl_seconds: RECENT_METRICS_TTL_SECONDS,
+        ttl_seconds: this.recentMetricsTtlSeconds,
       });
     } catch (error) {
       // Falha de cache não deve quebrar o fluxo, apenas log.
@@ -124,6 +120,10 @@ export class RedisMetricsCache implements MetricsCacheService {
    * Chamado após inserção de nova métrica via save().
    * Garante que a próxima leitura de getRecent() vai à BD
    * e obtém dados que incluem a métrica recém-inserida.
+   *
+   * Callers no hot path de ingestão (ex.: DrizzleMetricsRepository.save)
+   * devem invocar em fire-and-forget (`void invalidate(...).catch(...)`) —
+   * o cache é best-effort e não deve atrasar POST /api/metrics.
    *
    * Usa SCAN em vez de KEYS para não bloquear o event loop do Redis.
    * KEYS é O(N) e bloqueia todas as operações durante a execução.

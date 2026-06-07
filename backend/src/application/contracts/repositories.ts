@@ -6,14 +6,20 @@
 
 import { Metric } from '@domain/entities/Metric';
 
-/** */
+/**
+ * Resultado de uma tentativa de persistência idempotente.
+ * - saved: métrica inserida na BD
+ * - duplicate: requestId já existia (race ou retry)
+ */
+export type MetricSaveResult = 'saved' | 'duplicate';
+
 /**
  * Contrato para persistência e leitura de métricas brutas.
  * Implementado por DrizzleMetricsRepository na camada infra.
  */
 export interface MetricsRepository {
   // Persiste uma métrica na base de dados.
-  save(metric: Metric): Promise<void>;
+  save(metric: Metric): Promise<MetricSaveResult>;
 
   // Verifica se uma métrica com este requestId já foi guardada.
   // Usado para garantir que o mesmo request não é contado duas vezes.

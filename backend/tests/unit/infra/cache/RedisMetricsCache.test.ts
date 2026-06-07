@@ -23,7 +23,7 @@ import {
 } from '../../../fixtures/metrics';
 
 /** TTL esperado */
-const EXPECTED_TTL = 300;
+const CUSTOM_TTL = 120;
 
 /** Prefixo de chaves */
 const KEY_PREFIX = 'metrics:recent';
@@ -64,8 +64,8 @@ describe('RedisMetricsCache', () => {
 
   beforeEach(() => {
     mockRedis = createMockRedis();
-    // Cast necessário -> o mock não implementa toda a interface Redis do ioredis.
-    cache = new RedisMetricsCache(mockRedis as never);
+    // Cast necessário — o mock não implementa toda a interface Redis do ioredis.
+    cache = new RedisMetricsCache(mockRedis as never, CUSTOM_TTL);
   });
 
   afterEach(() => {
@@ -204,6 +204,21 @@ describe('RedisMetricsCache', () => {
     });
   });
 
+  describe('constructor TTL injection', () => {
+    it('should use a different injected TTL without changing the default cache instance', async () => {
+      const metric = createTestMetric();
+      const customCache = new RedisMetricsCache(mockRedis as never, 90);
+
+      await customCache.setRecent(TEST_WORKSPACE_ID, 5, [metric]);
+
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        expect.stringContaining('metrics:recent'),
+        90,
+        expect.any(String)
+      );
+    });
+  });
+
   // Grupo 2: setRecent()
   describe('setRecent', () => {
     it('should call Redis SETEX with correct key', async () => {
@@ -212,17 +227,17 @@ describe('RedisMetricsCache', () => {
 
       await cache.setRecent(TEST_WORKSPACE_ID, 5, [metric]);
 
-      expect(mockRedis.setex).toHaveBeenCalledWith(expectedKey, EXPECTED_TTL, expect.any(String));
+      expect(mockRedis.setex).toHaveBeenCalledWith(expectedKey, CUSTOM_TTL, expect.any(String));
     });
 
-    it('should use TTL of 300 seconds', async () => {
+    it('should use injected TTL from constructor', async () => {
       const metric = createTestMetric();
 
       await cache.setRecent(TEST_WORKSPACE_ID, 5, [metric]);
 
       expect(mockRedis.setex).toHaveBeenCalledWith(
         expect.any(String),
-        EXPECTED_TTL,
+        CUSTOM_TTL,
         expect.any(String)
       );
     });
@@ -259,7 +274,7 @@ describe('RedisMetricsCache', () => {
 
       expect(mockRedis.setex).toHaveBeenCalledWith(
         `${KEY_PREFIX}:${TEST_WORKSPACE_ID}:5`,
-        EXPECTED_TTL,
+        CUSTOM_TTL,
         '[]'
       );
     });

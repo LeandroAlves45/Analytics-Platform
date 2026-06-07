@@ -232,7 +232,7 @@ describe('DrizzleMetricsRepository', () => {
       expect(mockCache.invalidate).not.toHaveBeenCalled();
     });
 
-    it('should still resolve when cache.invalidate throws', async () => {
+    it('should return saved even when cache.invalidate rejects', async () => {
       const metric = createValidMetric();
 
       const idempotencyMock = {
@@ -249,10 +249,42 @@ describe('DrizzleMetricsRepository', () => {
       mockCache.invalidate.mockRejectedValue(new Error('Redis unavailable'));
 
       // cache.invalidate lançar não deve impedir o save de completar com sucesso
-      await expect(repository.save(metric)).resolves.toBeUndefined();
+      await expect(repository.save(metric)).resolves.toBe('saved');
     });
 
-    it('should not call cache.invalidate when requestId is duplicate', async () => {
+    it('should not await cache.invalidate completion before returning saved', async () => {
+      const metric = createValidMetric();
+      let invalidateResolved = false;
+
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+
+      mockCache.invalidate.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              invalidateResolved = true;
+              resolve();
+            }, 50);
+          })
+      );
+
+      const result = await repository.save(metric);
+
+      expect(result).toBe('saved');
+      expect(invalidateResolved).toBe(false);
+    });
+
+    it('should return duplicate when requestId already exists in idempotency table', async () => {
       const metric = createValidMetric();
 
       // RETURNING vazio = requestId duplicado, insert não acontece
@@ -264,10 +296,31 @@ describe('DrizzleMetricsRepository', () => {
 
       mockDb._tx.insert.mockReturnValueOnce(idempotencyMock);
 
-      await repository.save(metric);
+      const result = await repository.save(metric);
 
-      // Duplicado ignorado silenciosamente
+      expect(result).toBe('duplicate');
       expect(mockCache.invalidate).not.toHaveBeenCalled();
+    });
+
+    it('should return saved and invalidate cache after successful save', async () => {
+      const metric = createValidMetric();
+
+      const idempotencyMock = {
+        values: jest.fn().mockReturnThis(),
+        onConflictDoNothing: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ requestId: metric.requestId }]),
+      };
+
+      const metricsMock = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockDb._tx.insert.mockReturnValueOnce(idempotencyMock).mockReturnValueOnce(metricsMock);
+
+      const result = await repository.save(metric);
+
+      expect(result).toBe('saved');
+      expect(mockCache.invalidate).toHaveBeenCalledWith(TEST_WORKSPACE_ID);
     });
   });
 
@@ -686,7 +739,7 @@ describe('DrizzleMetricsRepository', () => {
      * O mock retorna array vazio do RETURNING, indicando conflito com PRIMARY KEY.
      * O repositório deve retornar silenciosamente sem erro (idempotência garantida).
      */
-    it('should silently skip insert when requestId already exists', async () => {
+    it('should return duplicate when requestId already exists', async () => {
       const metric = createValidMetric();
 
       // Mock da cadeia de insert com ON CONFLICT DO NOTHING RETURNING
@@ -698,7 +751,7 @@ describe('DrizzleMetricsRepository', () => {
 
       mockDb._tx.insert.mockReturnValueOnce(idempotencyInsertMock);
 
-      await expect(repository.save(metric)).resolves.toBeUndefined();
+      await expect(repository.save(metric)).resolves.toBe('duplicate');
       expect(mockCache.invalidate).not.toHaveBeenCalled();
     });
 
@@ -725,7 +778,7 @@ describe('DrizzleMetricsRepository', () => {
         .mockReturnValueOnce(idempotencyInsertMock) // 1º call: metric_idempotency_keys
         .mockReturnValueOnce(metricsRawInsertMock); // 2º call: metrics_raw
 
-      await expect(repository.save(metric)).resolves.toBeUndefined();
+      await expect(repository.save(metric)).resolves.toBe('saved');
       expect(mockCache.invalidate).toHaveBeenCalledWith(metric.workspaceId);
     });
 

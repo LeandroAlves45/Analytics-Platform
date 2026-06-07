@@ -9,13 +9,12 @@
 #
 #   lint ──────────────┐
 #   test-unit ─────────┼── build (só corre se todos os jobs passarem)
-#   test-integration ──┤   (integração só em push para main/develop)
+#   test-integration ──┤   (PostgreSQL + migrations + suite de integração)
 #   sdk-lint ──────────┤
 #   sdk-test ──────────┘
 #
 # Estratégia de testes:
-#   - pull_request: apenas testes unitários (rápido, sem BD)
-#   - push (merge): unitários + integração (suite completa com PostgreSQL)
+#   - pull_request e push: unitários + integração (regressões de BD antes do merge)
 
 name: CI
 
@@ -96,8 +95,6 @@ jobs:
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    # Suite completa só após merge — PRs correm apenas test-unit
-    if: github.event_name == 'push'
 
     services:
       postgres:
@@ -142,6 +139,7 @@ jobs:
           DATABASE_PASSWORD=analytics_password
           DATABASE_NAME=analytics_test
           REDIS_URL=redis://localhost:6379/0
+          METRICS_CACHE_TTL_SECONDS=300
           JWT_SECRET=test-jwt-secret-not-for-production
           JWT_EXPIRES_IN=1h
           EOF
@@ -177,9 +175,7 @@ jobs:
           DATABASE_PASSWORD: analytics_password
           DATABASE_NAME: analytics_test
           REDIS_URL: redis://localhost:6379/0
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          REDIS_DB: 0
+          METRICS_CACHE_TTL_SECONDS: 300
           JWT_SECRET: test-jwt-secret-not-for-production
 
       - name: Upload integration coverage report
@@ -253,7 +249,7 @@ jobs:
       always() &&
       needs.lint.result == 'success' &&
       needs.test-unit.result == 'success' &&
-      (needs.test-integration.result == 'success' || needs.test-integration.result == 'skipped') &&
+      needs.test-integration.result == 'success' &&
       needs.sdk-lint.result == 'success' &&
       needs.sdk-test.result == 'success'
     permissions:

@@ -15,7 +15,7 @@ import type { Database } from '@infra/frameworks/database';
 import { Metric, type HttpMethod } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors/AppError';
 import { logger } from '@infra/frameworks/logging';
-import type { MetricsRepository } from '@application/contracts/repositories';
+import type { MetricsRepository, MetricSaveResult } from '@application/contracts/repositories';
 import type { MetricsCacheService } from '@application/contracts/cache';
 import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/schema';
 
@@ -43,7 +43,7 @@ export class DrizzleMetricsRepository implements MetricsRepository {
    * Se a invalidação do cache falhar, o erro é silenciado pelo RedisMetricsCache
    * (ou ignorado pelo NoOpMetricsCacheService). A BD é a fonte de verdade.
    */
-  async save(metric: Metric): Promise<void> {
+  async save(metric: Metric): Promise<MetricSaveResult> {
     let wasSaved = false;
 
     try {
@@ -89,16 +89,14 @@ export class DrizzleMetricsRepository implements MetricsRepository {
       });
     }
 
-    // Invalidar o cache apenas quando a métrica foi de facto inserida.
-    // try/catch garante que uma falha de cache não mascara o sucesso da BD —
-    // a métrica já foi persistida, o cache é best-effort.
     if (wasSaved) {
-      try {
-        await this.cache.invalidate(metric.workspaceId);
-      } catch {
+      // Fire-and-forget: cache é best-effort e não deve atrasar a resposta HTTP.
+      void this.cache.invalidate(metric.workspaceId).catch(() => {
         // silenciado: falha de cache não deve reverter uma escrita bem-sucedida
-      }
+      });
     }
+
+    return wasSaved ? 'saved' : 'duplicate';
   }
 
   /**

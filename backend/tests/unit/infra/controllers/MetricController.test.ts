@@ -7,13 +7,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { MetricsController, AuthenticatedRequest } from '@infra/controllers/MetricsController';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
-import { ValidationError, AppError } from '@shared/errors';
+import { ValidationError, AppError, UnauthorizedError } from '@shared/errors';
 import { isValidUuid } from '@shared/validation/uuid';
 import {
   TEST_REQUEST_ID,
   TEST_WORKSPACE_ID,
   TEST_API_KEY_ID,
 } from '../../../../tests/fixtures/metrics';
+
+/**
+ * Guarda o valor original de NODE_ENV para restaurar após os testes.
+ */
+const originalNodeEnv = process.env.NODE_ENV;
 
 // Criar o mock do Express Request com os campos minimos necessários.
 // Tipado como AuthenticatedRequest para permitir simular workspaceId/apiKeyId
@@ -64,6 +69,10 @@ describe('MetricsController', () => {
     // Cast necessário porque usamos Pick<> para mockar apenas o método execute.
     controller = new MetricsController(mockUseCase as unknown as RecordMetricUseCase);
     mockNext = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
   });
 
   // Grupo 1: happy path.
@@ -219,6 +228,26 @@ describe('MetricsController', () => {
 
       expect(mockUseCase.execute).not.toHaveBeenCalled();
     });
+
+    it('should return 422 when payloadSizeBytes is zero', async () => {
+      const req = createMockRequest({
+        body: {
+          endpoint: '/api/users',
+          method: 'GET',
+          latencyMs: 150,
+          statusCode: 200,
+          requestId: TEST_REQUEST_ID,
+          payloadSizeBytes: 0,
+        },
+      });
+      const res = createMockResponse();
+      const next = jest.fn();
+
+      await controller.ingest(req as AuthenticatedRequest, res as Response, next);
+
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(mockUseCase.execute).not.toHaveBeenCalled();
+    });
   });
 
   // Grupo 3: erros do use case delegados ao next().
@@ -301,6 +330,44 @@ describe('MetricsController', () => {
       ];
       expect(isValidUuid(callArgs.workspaceId)).toBe(true);
       expect(isValidUuid(callArgs.apiKeyId)).toBe(true);
+    });
+  });
+
+  // Grupo 5: gate de autenticação em produção.
+  describe('ingest -> production auth gate', () => {
+    it('should call next with UnauthorizedError when workspace context is missing in production', async () => {
+      process.env.NODE_ENV = 'production';
+
+      const req = createMockRequest({
+        workspaceId: undefined,
+        apiKeyId: undefined,
+      });
+      const res = createMockResponse();
+
+      await controller.ingest(req as AuthenticatedRequest, res as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(UnauthorizedError));
+      expect(mockUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('should allow ingest without auth context in development', async () => {
+      process.env.NODE_ENV = 'development';
+
+      const req = createMockRequest({
+        workspaceId: undefined,
+        apiKeyId: undefined,
+      });
+      const res = createMockResponse();
+
+      mockUseCase.execute.mockResolvedValue({
+        metricId: TEST_WORKSPACE_ID,
+        recordedAt: new Date(),
+      });
+
+      await controller.ingest(req as AuthenticatedRequest, res as Response, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockUseCase.execute).toHaveBeenCalled();
     });
   });
 });

@@ -48,8 +48,9 @@ export function initializeRedis(redisUrl: string): Redis {
 
   // Cria a instância Redis com configuração explícita de reconnect
   redisClient = new Redis(redisUrl, {
-    // Retries por comando — evita bloqueio infinito quando Redis está down.
-    maxRetriesPerRequest: null,
+    // Fail-fast para cache: 1 retry evita fila infinita quando Redis está down.
+    // TODO: BullMQ (Sprint 3) usará cliente separado com maxRetriesPerRequest: null.
+    maxRetriesPerRequest: 1,
 
     // Timeout em ms -> falham rápido para o cache degradar para BD
     connectTimeout: 5_000,
