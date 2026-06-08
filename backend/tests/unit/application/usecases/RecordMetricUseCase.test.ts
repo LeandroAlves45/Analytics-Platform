@@ -55,10 +55,12 @@ describe('RecordMetricUseCase', () => {
     it('should schedule aggregation after saving metric', async () => {
       await useCase.execute(validInput);
 
-      expect(aggregationQueue.scheduleAggregation).toHaveBeenCalledWith(
-        validInput.workspaceId,
-        validInput.endpoint
-      );
+      expect(aggregationQueue.scheduleAggregation).toHaveBeenCalledWith({
+        workspaceId: validInput.workspaceId,
+        endpoint: validInput.endpoint,
+        method: validInput.method,
+        intervalMinutes: 5,
+      });
     });
 
     it('should check for duplicate requestId before saving metric', async () => {
