@@ -122,8 +122,9 @@ export const metricIdempotencyKeys = pgTable('metric_idempotency_keys', {
  * Agregações de 5 minutos calculadas pelo AggregationWorker.
  *
  * Retenção: 90 dias.
- * Cada linha é o resumo estatístico de todos os requests num endpoint
- * durante uma janela de 5 minutos.
+ * Unique constraint em (time, workspaceId, endpoint, method) garante
+ * idempotência do upsert: se o worker processar o mesmo job duas vezes,
+ * a segunda execução actualiza a linha existente em vez de criar duplicado.
  */
 export const metrics5min = pgTable(
   'metrics_5min',
@@ -166,6 +167,13 @@ export const metrics5min = pgTable(
     // Query principal do dashboard: métricas por workspace ordenadas por tempo
     workspaceTimeIdx: index('metrics_5min_workspace_time_idx').on(table.workspaceId, table.time),
     endpointTimeIdx: index('metrics_5min_endpoint_time_idx').on(table.endpoint, table.time),
+    // Constraint de idempotência para o upsert do AggregationWorker.
+    uniqueWindowIdx: uniqueIndex('metrics_5min_unique_window_idx').on(
+      table.time,
+      table.workspaceId,
+      table.endpoint,
+      table.method
+    ),
   })
 );
 
@@ -173,7 +181,6 @@ export const metrics5min = pgTable(
  * Agregações de 1 hora.
  *
  * Retenção: 1 ano.
- * Mesma estrutura que metrics_5min, granularidade diferente.
  */
 export const metrics1h = pgTable(
   'metrics_1h',
@@ -209,6 +216,12 @@ export const metrics1h = pgTable(
   },
   (table) => ({
     workspaceTimeIdx: index('metrics_1h_workspace_time_idx').on(table.workspaceId, table.time),
+    uniqueWindowIdx: uniqueIndex('metrics_1h_unique_window_idx').on(
+      table.time,
+      table.workspaceId,
+      table.endpoint,
+      table.method
+    ),
   })
 );
 
@@ -251,6 +264,12 @@ export const metrics1d = pgTable(
   },
   (table) => ({
     workspaceTimeIdx: index('metrics_1d_workspace_time_idx').on(table.workspaceId, table.time),
+    uniqueWindowIdx: uniqueIndex('metrics_1d_unique_window_idx').on(
+      table.time,
+      table.workspaceId,
+      table.endpoint,
+      table.method
+    ),
   })
 );
 

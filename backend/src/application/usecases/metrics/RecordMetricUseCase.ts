@@ -15,6 +15,7 @@ import { AppError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
 import { MetricsRepository, AggregationQueueService } from '@application/contracts/repositories';
 import { RecordMetricInputDTO, RecordMetricOutputDTO } from '@application/dto/MetricsDTO';
+import type { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
 
 /**
  * Use case para registar uma métrica.
@@ -82,8 +83,7 @@ export class RecordMetricUseCase {
       });
 
       // Re-throw AppErrors sem embrulhar: preserva code, statusCode e referência original.
-      // Erros genéricos (ex: falhas de rede inesperadas)
-      // continuam a ser normalizados para 500.
+      // Erros genéricos (ex: falhas de rede inesperadas) continuam a ser normalizados para 500.
       if (error instanceof AppError) {
         throw error;
       }
@@ -94,13 +94,20 @@ export class RecordMetricUseCase {
     }
 
     // Passo 4: agendar agregação em background.
-    // Também best-effort -> o worker de retry trata de falhas de fila.
+    // Best-effort -> o worker de retry trata falhas de fila.
     try {
-      await this.aggregationQueue.scheduleAggregation(input.workspaceId, input.endpoint);
+      const aggregationInput: ScheduleAggregationInput = {
+        workspaceId: input.workspaceId,
+        endpoint: input.endpoint,
+        method: input.method,
+        intervalMinutes: 5,
+      };
+      await this.aggregationQueue.scheduleAggregation(aggregationInput);
     } catch (error) {
       logger.warn('aggregation_scheduling_failed', {
         workspaceId: input.workspaceId,
         endpoint: input.endpoint,
+        method: input.method,
         error,
       });
       // Não re-lançamos erro, métrica principal já foi guardada.

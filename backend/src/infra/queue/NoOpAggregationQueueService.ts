@@ -1,13 +1,19 @@
 /**
  * Implementação stub do serviço de fila de agregação.
- * Será substituído por BullMQAggregationService no Passo 7/9.
- * Por enquanto, não faz nada (no-op).
+ * O padrão Null Object elimina verificações de null em todo o código
+ * que depende de AggregationQueueService. Em vez de "if (queue) queue.schedule()",
+ * o código chama sempre queue.scheduleAggregation() sem condições.
+ *
+ * Usado em:
+ * - Testes de integração (elimina BullMQ como dependência de teste)
+ * - Ambientes onde a fila não está configurada
  */
 
 import { AggregationQueueService } from '@application/contracts/repositories';
+import { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
 
 export class NoOpAggregationQueueService implements AggregationQueueService {
-  async scheduleAggregation(): Promise<void> {
-    // No-op: não faz nada até termos BullMQ implementado
+  async scheduleAggregation(_input: ScheduleAggregationInput): Promise<void> {
+    // No-op: sem BullMQ neste contexto
   }
 }

@@ -1,10 +1,11 @@
-// repositories.ts
-//
-// Este ficheiro define os contratos (interfaces) que as implementações
-// de persistência devem cumprir. A camada application conhece apenas
-// estas interfaces — nunca as implementações concretas (Drizzle, Redis, etc).
+/**
+ * Este ficheiro define os contratos (interfaces) que as implementações
+ * de persistência devem cumprir. A camada application conhece apenas
+ * estas interfaces -> nunca as implementações concretas (Drizzle, Redis, etc).
+ */
 
 import { Metric } from '@domain/entities/Metric';
+import { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
 
 /**
  * Resultado de uma tentativa de persistência idempotente.
@@ -35,9 +36,10 @@ export interface MetricsRepository {
  * Implementado por BullMQAggregationService na camada infra.
  */
 export interface AggregationQueueService {
-  // Coloca um job na fila para agregar métricas deste workspace/endpoint.
+  // Coloca um job na fila para agregar métricas do workspace/endpoint/método indicados.
   // O worker de agregação processa este job de forma assíncrona.
-  scheduleAggregation(workspaceId: string, endpoint: string): Promise<void>;
+  // Recebe um DTO tipado em vez de parâmetros soltos para escalar sem breaking changes.
+  scheduleAggregation(input: ScheduleAggregationInput): Promise<void>;
 }
 
 /**

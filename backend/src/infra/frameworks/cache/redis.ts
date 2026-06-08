@@ -8,7 +8,10 @@
  * - disconnectRedis() fecha a ligação no graceful shutdown
  *
  * O cache é best-effort: se Redis falhar, o repositório faz fallback à BD.
- * Por isso usamos timeouts e retries limitados — não bloqueamos requests indefinidamente.
+ * Por isso usamos timeouts e retries limitados -> não bloqueamos requests indefinidamente.
+ *
+ * O BullMQ usa um cliente separado (initializeBullMQRedis) com maxRetriesPerRequest: null,
+ * que é o único valor que o BullMQ aceita. Os dois clientes não podem ser partilhados.
  */
 
 import Redis from 'ioredis';
@@ -16,6 +19,9 @@ import { logger } from '@infra/frameworks/logging';
 
 // Instância singleton de Redis
 let redisClient: Redis | null = null;
+
+// Instância singleton do cliente dedicado ao BullMQ
+let bullMQRedisClient: Redis | null = null;
 
 /** Erros de rede onde o ioredis deve tentar reconectar automaticamente */
 const RECONNECT_ON_ERRORS_MESSAGES = ['READONLY', 'ECONNRESET', 'ETIMEOUT'] as const;
@@ -49,7 +55,6 @@ export function initializeRedis(redisUrl: string): Redis {
   // Cria a instância Redis com configuração explícita de reconnect
   redisClient = new Redis(redisUrl, {
     // Fail-fast para cache: 1 retry evita fila infinita quando Redis está down.
-    // TODO: BullMQ (Sprint 3) usará cliente separado com maxRetriesPerRequest: null.
     maxRetriesPerRequest: 1,
 
     // Timeout em ms -> falham rápido para o cache degradar para BD
@@ -102,6 +107,67 @@ export function getRedisClient(): Redis {
 }
 
 /**
+ * Inicializa o cliente Redis dedicado ao BullMQ.
+ *
+ * O BullMQ exige maxRetriesPerRequest: null porque usa comandos bloqueantes
+ * (BLPOP, BRPOP) que ficam à espera de jobs indefinidamente.
+ * Este comportamento é incompatível com o cliente de cache, que usa fail-fast.
+ *
+ * Deve ser chamada uma vez em main.ts, após initializeRedis().
+ */
+export function initializeBullMQRedis(redisUrl: string): Redis {
+  if (bullMQRedisClient !== null) {
+    return bullMQRedisClient;
+  }
+
+  logger.info('initializing_bullmq_redis', { url: maskRedisUrl(redisUrl) });
+
+  bullMQRedisClient = new Redis(redisUrl, {
+    maxRetriesPerRequest: null,
+
+    // Reconnect automático em erros de rede recuperáveis
+    reconnectOnError: (error) => {
+      return RECONNECT_ON_ERRORS_MESSAGES.some((msg) => error.message.includes(msg));
+    },
+  });
+
+  // Registo de eventos de ciclo de vida para observabilidade
+  bullMQRedisClient.on('connect', () => {
+    logger.info('bullmq_redis_connected', { url: maskRedisUrl(redisUrl) });
+  });
+
+  bullMQRedisClient.on('ready', () => {
+    logger.info('bullmq_redis_ready');
+  });
+
+  bullMQRedisClient.on('error', (error: Error) => {
+    // Log sem lançar — BullMQ gere reconnect automaticamente
+    logger.error('bullmq_redis_error', { error: error.message });
+  });
+
+  bullMQRedisClient.on('reconnecting', (delay: number) => {
+    logger.info('bullmq_redis_reconnecting', { delay_ms: delay });
+  });
+
+  return bullMQRedisClient;
+}
+
+/**
+ * Devolve o cliente Redis dedicado ao BullMQ.
+ * @throws Error se não foi inicializado
+ */
+export function getBullMQRedisClient(): Redis {
+  if (bullMQRedisClient === null) {
+    throw new Error('BullMQ Redis not initialized. Call initializeBullMQRedis() in main.ts first.');
+  }
+  return bullMQRedisClient;
+}
+
+// ---------------------------------------------------------------------------
+// Health check e shutdown
+// ---------------------------------------------------------------------------
+
+/**
  * Verifica se o Redis está acessível executando PING.
  * Usado no endpoint /ready — falha silenciosa devolve false, não lança.
  *
@@ -133,18 +199,31 @@ export async function checkRedisConnection(): Promise<boolean> {
  * a seguir a closeDatabaseConnection().
  */
 export async function disconnectRedis(): Promise<void> {
-  if (redisClient === null) {
-    return;
+  // Fecha o cliente de cache
+  if (redisClient !== null) {
+    try {
+      await redisClient.quit();
+      redisClient = null;
+      logger.info('redis_disconnected');
+    } catch (error) {
+      logger.error('redis_disconnect_failed', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      redisClient = null;
+    }
   }
 
-  try {
-    await redisClient.quit();
-    redisClient = null;
-    logger.info('redis_disconnected');
-  } catch (error) {
-    logger.error('redis_disconnect_failed', {
-      error: error instanceof Error ? error.message : 'unknown',
-    });
-    redisClient = null;
+  // Fecha cliente BullMQ
+  if (bullMQRedisClient !== null) {
+    try {
+      await bullMQRedisClient.quit();
+      bullMQRedisClient = null;
+      logger.info('bullmq_redis_disconnected');
+    } catch (error) {
+      logger.error('bullmq_redis_disconnect_failed', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      bullMQRedisClient = null;
+    }
   }
 }
