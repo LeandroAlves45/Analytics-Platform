@@ -15,7 +15,11 @@ import type { Database } from '@infra/frameworks/database';
 import { Metric, type HttpMethod } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors/AppError';
 import { logger } from '@infra/frameworks/logging';
-import type { MetricsRepository, MetricSaveResult } from '@application/contracts/repositories';
+import type {
+  MetricsRepository,
+  MetricSaveResult,
+  ActiveEndpoint,
+} from '@application/contracts/repositories';
 import type { MetricsCacheService } from '@application/contracts/cache';
 import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/schema';
 
@@ -176,6 +180,50 @@ export class DrizzleMetricsRepository implements MetricsRepository {
       logger.error('metric_get_recent_failed', { workspaceId, minutes, error });
 
       throw new AppError('Failed to retrieve recent metrics', 'INTERNAL_SERVER_ERROR', 500, {
+        cause: error as Error,
+      });
+    }
+  }
+
+  /**
+   * Devolve todos os pares únicos (workspaceId, endpoint, method) que tiveram
+   * pelo menos uma métrica nos últimos `minutes` minutos.
+   *
+   * Usado pelo AggregationScheduler para descobrir endpoints activos
+   * sem precisar de conhecer os workspaces de antemão.
+   *
+   * Não usa cache — o resultado muda a cada ciclo e o custo de uma query
+   * de GROUP BY sobre a janela recente é baixo comparado com o benefício
+   * de sempre ter dados frescos para o scheduler.
+   */
+  async getActiveEndpoints(minutes: number): Promise<ActiveEndpoint[]> {
+    try {
+      const since = new Date(Date.now() - minutes * 60 * 1000);
+
+      // GROUP BY sobre a janela recente para obter pares únicos.
+      const rows = await this.db
+        .selectDistinct({
+          workspaceId: metricsRaw.workspaceId,
+          endpoint: metricsRaw.endpoint,
+          method: metricsRaw.method,
+        })
+        .from(metricsRaw)
+        .where(gte(metricsRaw.time, since));
+
+      logger.debug('metrics_get_active_endpoints', {
+        minutes,
+        count: rows.length,
+      });
+
+      return rows.map((row) => ({
+        workspaceId: row.workspaceId,
+        endpoint: row.endpoint,
+        method: row.method,
+      }));
+    } catch (error) {
+      logger.error('metrics_get_active_endpoints_failed', { minutes, error });
+
+      throw new AppError('Failed to retrieve active endpoints', 'INTERNAL_SERVER_ERROR', 500, {
         cause: error as Error,
       });
     }

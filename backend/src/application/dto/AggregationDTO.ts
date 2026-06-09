@@ -92,12 +92,13 @@ interface AggregationStatistics {
  *
  * Union discriminada por `hasData`:
  * - `hasData: false` — sem métricas para o par endpoint/método na janela;
- *   contém apenas metadados (`processedCount` será 0).
+ *   contém apenas metadados (`processedCount` será 0). As propriedades de
+ *   estatísticas são opcionais (ausentes em runtime → undefined).
  * - `hasData: true` — estatísticas completas de latência e contagens por
  *   família de status code, prontas para persistência na BD.
  *
  * O worker usa este tipo para logging e para gravar na tabela de agregação.
  */
 export type AggregationResult =
-  | (AggregationResultBase & { hasData: false })
+  | (AggregationResultBase & { hasData: false } & Partial<AggregationStatistics>)
   | (AggregationResultBase & { hasData: true } & AggregationStatistics);

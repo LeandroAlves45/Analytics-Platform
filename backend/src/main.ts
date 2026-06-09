@@ -1,6 +1,14 @@
 /**
  * Ponto de entrada principal do servidor.
  * Configura infra (BD + Redis), monta a app Express e regista graceful shutdown.
+ *
+ * Ordem de arranque:
+ *   1. loadConfig()              — valida .env
+ *   2. initializeDatabase        — pool PostgreSQL
+ *   3. initializeRedis           — cliente ioredis para cache
+ *   4. initializeBullMQRedis     — cliente ioredis dedicado ao BullMQ
+ *   5. bootstrap()               — composition root
+ *   6. startServer()             — aceita tráfego HTTP
  */
 
 import 'dotenv/config';
@@ -15,6 +23,7 @@ import {
 } from '@infra/frameworks/database';
 import {
   initializeRedis,
+  initializeBullMQRedis,
   checkRedisConnection,
   disconnectRedis,
 } from '@infra/frameworks/cache/redis';
@@ -32,8 +41,10 @@ import { logger } from '@infra/frameworks/logging';
  */
 async function main(): Promise<void> {
   try {
-    // Carrega configuração global
+    // Passo 1: carregar e validar configuração
     const config = loadConfig();
+
+    // Passo 2: inicializar base de dados
     const databaseURL = `postgresql://${config.DATABASE_USER}:${config.DATABASE_PASSWORD}@${config.DATABASE_HOST}:${config.DATABASE_PORT}/${config.DATABASE_NAME}`;
     initializeDatabase(databaseURL);
     const isDatabaseReady = await checkDatabaseConnection();
@@ -45,10 +56,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Inicializa Redis
+    // Passo 3: inicializar cliente Redis de cache
     initializeRedis(config.REDIS_URL);
 
-    // Health check opcional no arranque — Redis down não impede o servidor de arrancar.
+    // Health check opcional no arranque —> Redis down não impede o servidor de arrancar.
     // O cache degrada para BD (Cache-Aside); apenas registamos o aviso.
     const isRedisReady = await checkRedisConnection();
     if (!isRedisReady) {
@@ -56,6 +67,9 @@ async function main(): Promise<void> {
         message: 'Cache will fall back to database until Redis is available',
       });
     }
+
+    // Passo 4: inicializar cliente Redis dedicado ao BullMQ.
+    initializeBullMQRedis(config.REDIS_URL);
 
     // Log: Inicialização do servidor
     logger.info('server_initializing', {
@@ -65,15 +79,28 @@ async function main(): Promise<void> {
       redis_ready: isRedisReady,
     });
 
+    // Passo 5: composition root
     const app = createApp();
-    const routers = bootstrap(config.METRICS_CACHE_TTL_SECONDS);
+    const { routers, lifecycle } = bootstrap(config.METRICS_CACHE_TTL_SECONDS);
     registerRoutes(app, routers);
     startServer(app, config.PORT);
 
+    // Graceful shutdown —> ordem inversa ao arranque.
+    //
+    // 1. scheduler: para de enfileirar novos jobs
+    // 2. worker: aguarda o job em curso terminar e fecha
+    // 3. queue: fecha a ligação BullMQ
+    // 4. database: fecha o pool de conexões (antes do Redis para não perder operações pendentes)
+    // 5. redis: fecha ambos os clientes (cache + BullMQ)
     const shutdown = async (signal: string): Promise<void> => {
       logger.info('server_shutting_down', { signal });
+
+      lifecycle.aggregationScheduler.stop();
+      await lifecycle.aggregationWorker.close();
+      await lifecycle.aggregationQueue.close();
       await closeDatabaseConnection();
       await disconnectRedis();
+
       process.exit(0);
     };
 

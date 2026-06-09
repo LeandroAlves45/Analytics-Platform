@@ -5,7 +5,7 @@
  */
 
 import { Metric } from '@domain/entities/Metric';
-import { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
+import { ScheduleAggregationInput, AggregationResult } from '@application/dto/AggregationDTO';
 
 /**
  * Resultado de uma tentativa de persistência idempotente.
@@ -13,6 +13,17 @@ import { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
  * - duplicate: requestId já existia (race ou retry)
  */
 export type MetricSaveResult = 'saved' | 'duplicate';
+
+/**
+ * Representa um endpoint activo: combinação única de workspace/endpoint/method
+ * que teve pelo menos uma métrica num dado intervalo de tempo.
+ * Usado pelo AggregationScheduler para descobrir o que agregar.
+ */
+export interface ActiveEndpoint {
+  workspaceId: string;
+  endpoint: string;
+  method: string;
+}
 
 /**
  * Contrato para persistência e leitura de métricas brutas.
@@ -29,6 +40,10 @@ export interface MetricsRepository {
   // Devolve métricas recentes de um workspace num intervalo de minutos.
   // Usado pelos workers de agregação para calcular percentis.
   getRecent(workspaceId: string, minutes: number): Promise<Metric[]>;
+
+  // Devolve todos os pares únicos (workspaceId, endpoint, method) que tiveram
+  // pelo menos uma métrica nos últimos `minutes` minutos.
+  getActiveEndpoints(minutes: number): Promise<ActiveEndpoint[]>;
 }
 
 /**
@@ -40,6 +55,16 @@ export interface AggregationQueueService {
   // O worker de agregação processa este job de forma assíncrona.
   // Recebe um DTO tipado em vez de parâmetros soltos para escalar sem breaking changes.
   scheduleAggregation(input: ScheduleAggregationInput): Promise<void>;
+}
+
+/**
+ * Contrato para persistência de resultados de agregação.
+ * Implementado por DrizzleAggregationRepository na camada infra.
+ */
+export interface AggregationRepository {
+  // Persiste um resultado calculado pelo AggregateMetricsUseCase.
+  // Usa upsert idempotente —> retries do worker não geram duplicados.
+  save(result: AggregationResult): Promise<void>;
 }
 
 /**

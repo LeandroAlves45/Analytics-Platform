@@ -74,14 +74,12 @@ export class BullMQAggregationQueue implements AggregationQueueService {
 
     try {
       await this.queue.add(AGGREGATION_QUEUE_NAME, input, {
-        jobId,
-
         // Deduplica jobs com o mesmo jobId numa janela de 5 minutos.
         // Se um job com este jobId já existir na queue (pendente ou em processamento),
         // o BullMQ ignora silenciosamente este add().
         deduplication: {
           id: jobId,
-          ttl: input.intervalMinutes * 60 * 1_000,
+          ttl: input.intervalMinutes * 60 * 1_000, // TTL de 5 minutos.
         },
       });
 

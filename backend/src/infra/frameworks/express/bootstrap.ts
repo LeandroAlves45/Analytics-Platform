@@ -17,11 +17,15 @@
 
 import { Router } from 'express';
 import { getDatabase } from '@infra/frameworks/database/connection';
-import { getRedisClient } from '@infra/frameworks/cache/redis';
+import { getRedisClient, getBullMQRedisClient } from '@infra/frameworks/cache/redis';
 import { RedisMetricsCache } from '@infra/cache/RedisMetricsCache';
-import { NoOpAggregationQueueService } from '@infra/queue/NoOpAggregationQueueService';
+import { BullMQAggregationQueue } from '@infra/queue/BullMQAggregationQueue';
 import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
+import { DrizzleAggregationRepository } from '@infra/repositories/DrizzleAggregationRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
+import { AggregateMetricsUseCase } from '@application/usecases/aggregation/AggregateMetricsUseCase';
+import { AggregationWorker } from '@infra/queue/AggregationWorker';
+import { AggregationScheduler } from '@infra/queue/AggregationScheduler';
 import { MetricsController } from '@infra/controllers/MetricsController';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
 
@@ -34,6 +38,24 @@ export interface AppRouters {
 }
 
 /**
+ * Expõe os componentes com ciclo de vida que precisam de ser fechados
+ * no graceful shutdown em main.ts.
+ *
+ * A ordem de shutdown é inversa à ordem de arranque:
+ * scheduler → worker → queue → redis → database
+ */
+export interface AppLifecycle {
+  aggregationScheduler: AggregationScheduler;
+  aggregationWorker: AggregationWorker;
+  aggregationQueue: BullMQAggregationQueue;
+}
+
+export interface BootstrapResult {
+  routers: AppRouters;
+  lifecycle: AppLifecycle;
+}
+
+/**
  * Inicializa todas as dependências da aplicação e devolve os routers
  * prontos a ser montados no app Express.
  *
@@ -41,10 +63,11 @@ export interface AppRouters {
  *
  * @returns Objecto com todos os routers configurados.
  */
-export function bootstrap(metricsCacheTtlSeconds: number): AppRouters {
+export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
   // Passo 1: infra externa.
   const db = getDatabase();
   const redisClient = getRedisClient();
+  const bullMQRedisClient = getBullMQRedisClient();
 
   // Passo 2: serviço de cache
   // RedisMetricsCache implementa MetricsCacheService com estratégia Cache-Aside.
@@ -53,16 +76,32 @@ export function bootstrap(metricsCacheTtlSeconds: number): AppRouters {
   // Passo 3: repositório com cache injectado
   // DrizzleMetricsRepository usa o cache em getRecent() e invalida em save().
   const metricsRepository = new DrizzleMetricsRepository(db, metricsCache);
+  const aggregationRepository = new DrizzleAggregationRepository(db);
 
-  // TODO: Passo 4: serviço de queue (NoOp por enquanto — implementado no Sprint 3)
-  const aggregationQueue = new NoOpAggregationQueueService();
+  // Passo 4: queue BullMQ
+  const aggregationQueue = new BullMQAggregationQueue(bullMQRedisClient);
 
   // Passo 5: use case com repositório e queue
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
+  const aggregateMetricsUseCase = new AggregateMetricsUseCase(metricsRepository);
 
-  // Passo 6: controller e router
+  // Passo 6: workers e scheduler
+  const aggregationWorker = new AggregationWorker(
+    aggregateMetricsUseCase,
+    aggregationRepository,
+    bullMQRedisClient
+  );
+  const aggregationScheduler = new AggregationScheduler(metricsRepository, aggregationQueue);
+
+  // Arranca o scheduler -> começa a enfileirar jobs a cada 5 minutos.
+  aggregationScheduler.start();
+
+  // Passo 7: controller e router
   const metricsController = new MetricsController(recordMetricUseCase);
   const metricsRouter = createMetricsRouter(metricsController);
 
-  return { metricsRouter };
+  return {
+    routers: { metricsRouter },
+    lifecycle: { aggregationScheduler, aggregationWorker, aggregationQueue },
+  };
 }
