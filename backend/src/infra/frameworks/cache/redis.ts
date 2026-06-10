@@ -190,6 +190,28 @@ export async function checkRedisConnection(): Promise<boolean> {
 }
 
 /**
+ * Verifica se o cliente Redis do BullMQ está acessível executando PING.
+ * Usado no arranque para registar aviso quando BullMQ Redis está indisponível.
+ *
+ * @returns true se PING respondeu PONG, false caso contrário
+ */
+export async function checkBullMQRedisConnection(): Promise<boolean> {
+  if (bullMQRedisClient === null) {
+    return false;
+  }
+
+  try {
+    const response = await bullMQRedisClient.ping();
+    return response === 'PONG';
+  } catch (error) {
+    logger.error('bullmq_redis_health_check_failed', {
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return false;
+  }
+}
+
+/**
  * Fecha a conexão Redis de forma controlada.
  *
  * quit() envia QUIT ao servidor antes de fechar a socket,

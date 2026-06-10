@@ -7,7 +7,8 @@
  * 2. Calcular os percentis e contagens de status code
  * 3. Persistir o resultado na tabela de agregação correcta
  */
-export interface ScheduleAggregationInput {
+/** Dados mínimos para enfileirar agregação — callers não precisam de windowStart */
+export interface ScheduleAggregationRequest {
   /** UUID do workspace */
   workspaceId: string;
 
@@ -19,6 +20,12 @@ export interface ScheduleAggregationInput {
 
   /** Duração da janela de tempo em minutos */
   intervalMinutes: number;
+}
+
+/** Payload completo do job BullMQ — windowStart fixado no momento do enqueue */
+export interface ScheduleAggregationInput extends ScheduleAggregationRequest {
+  /** Início da janela de agregação, calculado no producer */
+  windowStart: Date;
 }
 
 /**
@@ -44,6 +51,9 @@ interface AggregationResultBase {
 
   /** Duração da janela processada, em minutos */
   intervalMinutes: number;
+
+  /** Início da janela de agregação (herdado do job) */
+  windowStart: Date;
 }
 
 /**

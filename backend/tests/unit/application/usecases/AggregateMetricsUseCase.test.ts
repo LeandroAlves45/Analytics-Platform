@@ -7,6 +7,7 @@
 import { AggregateMetricsUseCase } from '@application/usecases/aggregation/AggregateMetricsUseCase';
 import type { MetricsRepository } from '@application/contracts/repositories';
 import { Metric } from '@domain/entities/Metric';
+import { truncateToInterval } from '@shared/date-utils/truncate-to-interval';
 import {
   TEST_WORKSPACE_ID,
   TEST_API_KEY_ID,
@@ -33,12 +34,22 @@ function makeMetric(overrides: {
   });
 }
 
-// Mock do repositório — não queremos BD nos unitários
+// Mock do repositório — simula filtragem por endpoint/method quando filter é passado
 function makeMockRepository(metrics: Metric[]): jest.Mocked<MetricsRepository> {
   return {
     save: jest.fn(),
     existsByRequestId: jest.fn(),
-    getRecent: jest.fn().mockResolvedValue(metrics),
+    getRecent: jest.fn().mockImplementation((_workspaceId, _minutes, filter?) => {
+      if (filter === undefined) {
+        return Promise.resolve(metrics);
+      }
+
+      return Promise.resolve(
+        metrics.filter(
+          (metric) => metric.endpoint === filter.endpoint && metric.method === filter.method
+        )
+      );
+    }),
     getActiveEndpoints: jest.fn(),
   };
 }
@@ -48,6 +59,7 @@ const BASE_INPUT = {
   endpoint: '/api/users',
   method: 'GET',
   intervalMinutes: 5,
+  windowStart: truncateToInterval(new Date(), 5),
 };
 
 describe('AggregateMetricsUseCase', () => {
@@ -361,8 +373,23 @@ describe('AggregateMetricsUseCase', () => {
 
       expect(repo.getRecent).toHaveBeenCalledWith(
         BASE_INPUT.workspaceId,
-        BASE_INPUT.intervalMinutes
+        BASE_INPUT.intervalMinutes,
+        {
+          endpoint: BASE_INPUT.endpoint,
+          method: BASE_INPUT.method,
+          windowStart: BASE_INPUT.windowStart,
+        }
       );
+    });
+  });
+
+  describe('error handling', () => {
+    it('should propagate errors thrown by the repository', async () => {
+      const repo = makeMockRepository([]);
+      repo.getRecent.mockRejectedValue(new Error('database_error'));
+      const useCase = new AggregateMetricsUseCase(repo);
+
+      await expect(useCase.execute(BASE_INPUT)).rejects.toThrow('database_error');
     });
   });
 });

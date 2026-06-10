@@ -347,40 +347,53 @@ export class DrizzleMetricsRepository implements MetricsRepository {
 
 Express, Drizzle, Redis, BullMQ. Dependências externas.
 
-#### Example: Express App Bootstrap
+#### Example: Express App Bootstrap (Sprint 3 — post-aggregation)
+
+`bootstrap.ts` is the composition root. It wires all dependencies and returns two
+objects: `routers` (Express router instances) and `lifecycle` (shutdown handles).
+`main.ts` calls `bootstrap()`, mounts routers, then registers graceful shutdown.
 
 ```typescript
-import express from 'express';
-import { MetricsController } from './infra/controllers/MetricsController';
-import { RecordMetricUseCase } from './application/usecases/metrics/RecordMetricUseCase';
-import { DrizzleMetricsRepository } from './infra/repositories/DrizzleMetricsRepository';
-import { BullMQAggregationService } from './infra/queue/BullMQAggregationService';
+// src/infra/frameworks/express/bootstrap.ts (simplified)
+import { BullMQAggregationQueue } from '@infra/queue/BullMQAggregationQueue';
+import { AggregationWorker } from '@infra/queue/AggregationWorker';
+import { AggregationScheduler } from '@infra/queue/AggregationScheduler';
+import { DrizzleAggregationRepository } from '@infra/repositories/DrizzleAggregationRepository';
 
-const app = express();
+export function bootstrap(cacheTtlSeconds: number): BootstrapResult {
+  const db = getDatabase();
+  const redisClient = getRedisClient();
+  const bullMQClient = getBullMQRedisClient();
 
-// Initialize external dependencies
-const db = initializeDatabase();
-const redis = initializeRedis();
+  const metricsRepository = new DrizzleMetricsRepository(db, cache);
+  const aggregationRepository = new DrizzleAggregationRepository(db);
+  const aggregationQueue = new BullMQAggregationQueue(bullMQClient);
 
-// Create repositories (implements application contracts)
-const metricsRepository = new DrizzleMetricsRepository(db);
-const aggregationService = new BullMQAggregationService(redis);
+  const aggregateUseCase = new AggregateMetricsUseCase(metricsRepository);
+  const recordUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
 
-// Create use cases (depends on repositories)
-const recordMetricUseCase = new RecordMetricUseCase(
-  metricsRepository,
-  aggregationService
-);
+  const aggregationWorker = new AggregationWorker(
+    bullMQClient, aggregateUseCase, aggregationRepository
+  );
+  const aggregationScheduler = new AggregationScheduler(
+    metricsRepository, aggregationQueue
+  );
+  aggregationScheduler.start();
 
-// Create controllers (depends on use cases)
-const metricsController = new MetricsController(recordMetricUseCase);
+  return {
+    routers: [createMetricsRouter(new MetricsController(recordUseCase))],
+    lifecycle: { aggregationScheduler, aggregationWorker, aggregationQueue },
+  };
+}
+```
 
-// Setup routes
-app.post('/api/metrics', (req, res) => 
-  metricsController.ingest(req, res)
-);
-
-export default app;
+**Shutdown order** (inverse of startup, in `main.ts`):
+```
+scheduler.stop()         → stops producing new jobs
+worker.close()           → waits for in-progress job, closes consumer
+aggregationQueue.close() → closes BullMQ connection
+disconnectRedis()        → closes both Redis clients (cache + BullMQ)
+closeDatabaseConnection() → closes PostgreSQL pool
 ```
 
 ## 3. Project Structure
@@ -401,8 +414,9 @@ src/
 │   ├── usecases/
 │   │   ├── metrics/
 │   │   │   ├── RecordMetricUseCase.ts
-│   │   │   ├── GetEndpointLatencyUseCase.ts
-│   │   │   └── AggregateMetricsUseCase.ts
+│   │   │   └── GetEndpointLatencyUseCase.ts
+│   │   ├── aggregation/
+│   │   │   └── AggregateMetricsUseCase.ts  (Sprint 3)
 │   │   ├── alerts/
 │   │   │   ├── CreateAlertRuleUseCase.ts
 │   │   │   ├── EvaluateAlertsUseCase.ts
@@ -416,6 +430,7 @@ src/
 │   │   └── gateways.ts (interfaces)
 │   └── dto/
 │       ├── MetricsDTO.ts
+│       ├── AggregationDTO.ts  (Sprint 3)
 │       ├── AlertsDTO.ts
 │       └── WorkspacesDTO.ts
 ├── infra/
@@ -427,7 +442,8 @@ src/
 │   │   ├── MetricsPresenter.ts
 │   │   └── ErrorPresenter.ts
 │   ├── repositories/
-│   │   ├── DrizzleMetricsRepository.ts
+│   │   ├── DrizzleMetricsRepository.ts     (+ getActiveEndpoints — Sprint 3)
+│   │   ├── DrizzleAggregationRepository.ts (Sprint 3 — upsert to metrics_5min/1h/1d)
 │   │   ├── DrizzleAlertRepository.ts
 │   │   └── RedisMetricsCache.ts
 │   ├── gateways/
@@ -449,13 +465,12 @@ src/
 │       │   ├── migrations/
 │       │   └── drizzle.config.ts
 │       ├── cache/
-│       │   └── redis.ts
-│       ├── queue/
-│       │   ├── bullmq.ts
-│       │   ├── workers/
-│       │   │   ├── aggregation.worker.ts
-│       │   │   └── alerts.worker.ts
-│       │   └── index.ts
+│       │   └── redis.ts  (dual-client: cache + BullMQ with separate configs — Sprint 3)
+│       ├── queue/        (Sprint 3 — all implemented)
+│       │   ├── BullMQAggregationQueue.ts   (producer)
+│       │   ├── AggregationWorker.ts        (consumer)
+│       │   ├── AggregationScheduler.ts     (periodic trigger every 5min)
+│       │   └── NoOpAggregationQueueService.ts
 │       └── external/
 │           ├── stripe.ts
 │           ├── slack.ts
@@ -466,6 +481,8 @@ src/
 │   │   ├── ValidationError.ts
 │   │   ├── NotFoundError.ts
 │   │   └── UnauthorizedError.ts
+│   ├── date-utils/            (Sprint 3)
+│   │   └── truncate-to-interval.ts
 │   ├── types/
 │   │   └── index.ts
 │   └── utils/
@@ -790,4 +807,4 @@ describe('RequestMetricsExportUseCase', () => {
 ❌ Circular dependencies entre camadas
 ✅ Dependências sempre para dentro
 
-Last Updated: January 2025
+Last Updated: June 2026 (Sprint 3 — aggregation pipeline added)

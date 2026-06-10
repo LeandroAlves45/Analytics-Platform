@@ -8,6 +8,7 @@ import type { CreateMetricInput } from '@domain/entities/Metric';
 
 /** UUID v4 válido para workspaceId em testes */
 export const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440000';
+export const TEST_WORKSPACE_ID_2 = '550e8400-e29b-41d4-a716-446655440001';
 
 /** UUID v4 válido para apiKeyId em testes */
 export const TEST_API_KEY_ID = '660e8400-e29b-41d4-a716-446655440001';

@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX "metrics_1d_unique_window_idx" ON "metrics_1d" USING btree ("time","workspace_id","endpoint","method");--> statement-breakpoint
+CREATE UNIQUE INDEX "metrics_1h_unique_window_idx" ON "metrics_1h" USING btree ("time","workspace_id","endpoint","method");--> statement-breakpoint
+CREATE UNIQUE INDEX "metrics_5min_unique_window_idx" ON "metrics_5min" USING btree ("time","workspace_id","endpoint","method");

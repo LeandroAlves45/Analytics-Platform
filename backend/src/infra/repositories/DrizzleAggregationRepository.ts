@@ -54,13 +54,8 @@ export class DrizzleAggregationRepository {
 
     const table = this.resolveTable(result.intervalMinutes);
 
-    // Calcula o início da janela temporal truncando o timestamp actual.
-    // Ex: se agora são 14:07 e o intervalo é 5min, a janela começa em 14:05.
-    const windowStart = truncateToInterval(new Date(), result.intervalMinutes);
-
-    // Valores a inserir ou atualizar no upsert.
     const values = {
-      time: windowStart,
+      time: result.windowStart,
       workspaceId: result.workspaceId,
       endpoint: result.endpoint,
       method: result.method,
@@ -107,7 +102,7 @@ export class DrizzleAggregationRepository {
         method: result.method,
         intervalMinutes: result.intervalMinutes,
         count: result.processedCount,
-        windowStart: windowStart.toISOString(),
+        windowStart: result.windowStart.toISOString(),
       });
     } catch (error) {
       logger.error('aggregation_save_failed', {
@@ -139,22 +134,4 @@ export class DrizzleAggregationRepository {
 
     return table;
   }
-}
-
-/**
- * Trunca um Date para o início do intervalo de agregação.
- *
- * Exemplos:
- *   truncateToInterval(14:07:33, 5)    → 14:05:00
- *   truncateToInterval(14:07:33, 60)   → 14:00:00
- *   truncateToInterval(14:07:33, 1440) → 00:00:00 (início do dia)
- *
- * @param date - Data a truncar
- * @param intervalMinutes - Intervalo em minutos (5, 60 ou 1440)
- */
-function truncateToInterval(date: Date, intervalMinutes: number): Date {
-  const ms = date.getTime();
-  const intervalMs = intervalMinutes * 60 * 1_000;
-  // Trunca para o último múltiplo inferior do intervalo com Math.floor.
-  return new Date(Math.floor(ms / intervalMs) * intervalMs);
 }

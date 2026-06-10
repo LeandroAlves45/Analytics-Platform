@@ -25,6 +25,7 @@ import {
   initializeRedis,
   initializeBullMQRedis,
   checkRedisConnection,
+  checkBullMQRedisConnection,
   disconnectRedis,
 } from '@infra/frameworks/cache/redis';
 import { logger } from '@infra/frameworks/logging';
@@ -69,7 +70,14 @@ async function main(): Promise<void> {
     }
 
     // Passo 4: inicializar cliente Redis dedicado ao BullMQ.
+    // Mesmo padrão do cache Redis: aviso se indisponível, mas não bloqueia o arranque.
     initializeBullMQRedis(config.REDIS_URL);
+    const isBullMQRedisReady = await checkBullMQRedisConnection();
+    if (!isBullMQRedisReady) {
+      logger.warn('bullmq_redis_not_ready_at_startup', {
+        message: 'Aggregation workers will retry connection automatically',
+      });
+    }
 
     // Log: Inicialização do servidor
     logger.info('server_initializing', {
@@ -77,6 +85,7 @@ async function main(): Promise<void> {
       environment: config.NODE_ENV,
       database_ready: isDatabaseReady,
       redis_ready: isRedisReady,
+      bullmq_redis_ready: isBullMQRedisReady,
     });
 
     // Passo 5: composition root

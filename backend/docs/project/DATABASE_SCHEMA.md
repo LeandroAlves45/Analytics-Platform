@@ -86,9 +86,15 @@ SELECT create_hypertable('metrics_5min', 'time', if_not_exists => TRUE);
 
 CREATE INDEX ON metrics_5min (workspace_id, time DESC);
 CREATE INDEX ON metrics_5min (endpoint, time DESC);
+
+-- Required for idempotent upsert in DrizzleAggregationRepository.
+-- Each (time, workspace_id, endpoint, method) tuple identifies a unique aggregation window.
+-- TimescaleDB requires the partition column (time) to be part of the constraint.
+CREATE UNIQUE INDEX metrics_5min_unique_window_idx
+  ON metrics_5min (time, workspace_id, endpoint, method);
 ```
 
-**Populated by**: AggregationWorker every 5 minutes
+**Populated by**: AggregationWorker every 5 minutes via `DrizzleAggregationRepository.save()` with `ON CONFLICT DO UPDATE` (upsert). The unique index is the prerequisite: without it, the upsert has no conflict target and inserts duplicates instead.
 
 **Data structure**: Aggregates percentiles, counts
 
@@ -126,6 +132,10 @@ CREATE TABLE metrics_1h (
 SELECT create_hypertable('metrics_1h', 'time', if_not_exists => TRUE);
 
 CREATE INDEX ON metrics_1h (workspace_id, time DESC);
+
+-- Required for idempotent upsert. Same rationale as metrics_5min_unique_window_idx.
+CREATE UNIQUE INDEX metrics_1h_unique_window_idx
+  ON metrics_1h (time, workspace_id, endpoint, method);
 ```
 
 ---
@@ -162,9 +172,11 @@ CREATE TABLE metrics_1d (
 SELECT create_hypertable('metrics_1d', 'time', if_not_exists => TRUE);
 
 CREATE INDEX ON metrics_1d (workspace_id, time DESC);
-```
 
----
+-- Required for idempotent upsert. Same rationale as metrics_5min_unique_window_idx.
+CREATE UNIQUE INDEX metrics_1d_unique_window_idx
+  ON metrics_1d (time, workspace_id, endpoint, method);
+```
 
 ---
 

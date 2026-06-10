@@ -12,7 +12,11 @@ import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { logger } from '@infra/frameworks/logging';
 import type { AggregationQueueService } from '@application/contracts/repositories';
-import type { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
+import type {
+  ScheduleAggregationInput,
+  ScheduleAggregationRequest,
+} from '@application/dto/AggregationDTO';
+import { truncateToInterval } from '@shared/date-utils/truncate-to-interval';
 
 /**
  * Nome da queue partilhado entre producer e consumer.
@@ -31,24 +35,17 @@ export class BullMQAggregationQueue implements AggregationQueueService {
   private readonly queue: Queue<ScheduleAggregationInput>;
 
   constructor(redisClient: Redis) {
-    // Instância a Queue BullMQ com o cliente Redis dedicado-
-    // A Queue não processa jobs, apenas persiste no Redis.
     this.queue = new Queue<ScheduleAggregationInput>(AGGREGATION_QUEUE_NAME, {
       connection: redisClient,
 
       defaultJobOptions: {
-        // Número de tentativas automáticas em caso de falha do worker.
-        // 3 tentativas cobre falhas transitórias (timeout de BD, restart).
         attempts: 3,
 
         backoff: {
-          // Backoff exponencial: 1s, 2s, 4s entre tentativas.
           type: 'exponential',
           delay: 1_000,
         },
 
-        // Remove jobs completados após 1 hora para não acumular no Redis.
-        // Jobs falhados são mantidos 24 horas para diagnóstico.
         removeOnComplete: { age: 3_600 },
         removeOnFail: { age: 86_400 },
       },
@@ -60,26 +57,19 @@ export class BullMQAggregationQueue implements AggregationQueueService {
   /**
    * Coloca um job de agregação na fila.
    *
-   * O jobId é determinístico: combina workspaceId, endpoint, method e intervalo.
-   * Isto garante que dois requests concorrentes para o mesmo endpoint
-   * não geram dois jobs duplicados — BullMQ ignora o segundo add() com jobId igual.
-   *
-   * @param input - Dados do job: workspace, endpoint, method, intervalo
+   * windowStart é fixado aqui para que jobs atrasados persistam na janela correcta.
    */
-  async scheduleAggregation(input: ScheduleAggregationInput): Promise<void> {
-    // Constrói um jobId determinístico para idempotência da queue.
-    // Se o mesmo endpoint enviar 100 métricas em 5 segundos, apenas
-    // um job de agregação é enfileirado para essa janela de 5 minutos.
-    const jobId = buildAggregationJobId(input);
+  async scheduleAggregation(input: ScheduleAggregationRequest): Promise<void> {
+    const windowStart = truncateToInterval(new Date(), input.intervalMinutes);
+    const payload: ScheduleAggregationInput = { ...input, windowStart };
+    const jobId = buildAggregationJobId(payload);
 
     try {
-      await this.queue.add(AGGREGATION_QUEUE_NAME, input, {
-        // Deduplica jobs com o mesmo jobId numa janela de 5 minutos.
-        // Se um job com este jobId já existir na queue (pendente ou em processamento),
-        // o BullMQ ignora silenciosamente este add().
+      await this.queue.add(AGGREGATION_QUEUE_NAME, payload, {
+        jobId,
         deduplication: {
           id: jobId,
-          ttl: input.intervalMinutes * 60 * 1_000, // TTL de 5 minutos.
+          ttl: input.intervalMinutes * 60 * 1_000,
         },
       });
 
@@ -89,6 +79,7 @@ export class BullMQAggregationQueue implements AggregationQueueService {
         endpoint: input.endpoint,
         method: input.method,
         intervalMinutes: input.intervalMinutes,
+        windowStart: windowStart.toISOString(),
       });
     } catch (error) {
       logger.error('aggregation_job_enqueue_failed', {
@@ -98,34 +89,20 @@ export class BullMQAggregationQueue implements AggregationQueueService {
         error: error instanceof Error ? error.message : 'unknown',
       });
 
-      // Re-lançamos para que o RecordMetricUseCase possa logar o warning.
       throw error;
     }
   }
 
-  /**
-   * Fecha a conexão com a Queue de forma controlada.
-   * Deve ser chamado no graceful shutdown em main.ts.
-   */
   async close(): Promise<void> {
     await this.queue.close();
     logger.info('aggregation_queue_closed');
   }
 }
 
-/**
- * Constrói um jobId determinístico para idempotência.
- *
- * Formato: agg:{workspaceId}:{endpoint}:{method}:{intervalMinutes}m
- * Exemplo: agg:uuid-123:/api/users:GET:5m
- *
- * A janela de 5 minutos garante que num dado ciclo de 5 minutos,
- * só existe um job de agregação por combinação workspace/endpoint/method.
- */
 function buildAggregationJobId(input: ScheduleAggregationInput): string {
-  // Trunca o timestamp actual para o início do intervalo actual.
-  // Se agora forem 14:07, a janela de 5 min começa em 14:05.
-  const windowsStart = Math.floor(Date.now() / (input.intervalMinutes * 60 * 1_000));
+  const windowBucket = Math.floor(
+    input.windowStart.getTime() / (input.intervalMinutes * 60 * 1_000)
+  );
 
-  return `agg:${input.workspaceId}:${input.endpoint}:${input.method}:${input.intervalMinutes}m:${windowsStart}`;
+  return `agg:${input.workspaceId}:${input.endpoint}:${input.method}:${input.intervalMinutes}m:${windowBucket}`;
 }

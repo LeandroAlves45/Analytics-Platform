@@ -10,10 +10,10 @@
  */
 
 import { AggregationQueueService } from '@application/contracts/repositories';
-import { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
+import { ScheduleAggregationRequest } from '@application/dto/AggregationDTO';
 
 export class NoOpAggregationQueueService implements AggregationQueueService {
-  async scheduleAggregation(_input: ScheduleAggregationInput): Promise<void> {
+  async scheduleAggregation(_input: ScheduleAggregationRequest): Promise<void> {
     // No-op: sem BullMQ neste contexto
   }
 }

@@ -1,20 +1,15 @@
 #!/bin/bash
 # Re-injects critical project rules after context compaction.
 # Used as a SessionStart hook with matcher "compact".
-# ADJUSTED FOR PT MANAGER
 #
-# When Claude's context window fills up, compaction summarizes the conversation
-# and loses specific details. This hook restores your non-negotiable project
-# rules so Claude stays aligned even after compaction.
-
-# ──────────────────────────────────────────────
-# Find project root
-# ──────────────────────────────────────────────
+# When Claude's context window fills up, compaction summarises the conversation
+# and loses specific details. This hook restores non-negotiable project rules
+# so Claude stays aligned even after compaction.
 
 find_project_root() {
   local dir="$PWD"
   while [ "$dir" != "/" ]; do
-    if [ -f "$dir/package.json" ] || [ -f "$dir/pyproject.toml" ] || [ -f "$dir/Cargo.toml" ] || [ -f "$dir/go.mod" ] || [ -d "$dir/.git" ]; then
+    if [ -f "$dir/package.json" ] || [ -d "$dir/.git" ]; then
       echo "$dir"
       return
     fi
@@ -25,132 +20,98 @@ find_project_root() {
 
 ROOT=$(find_project_root)
 
-# ──────────────────────────────────────────────
-# Dynamic context (same as session-start.sh)
-# ──────────────────────────────────────────────
-
 CONTEXT=""
-
 BRANCH=$(git branch --show-current 2>/dev/null)
-if [ -n "$BRANCH" ]; then
-  CONTEXT="Branch: $BRANCH"
-fi
-
+[ -n "$BRANCH" ] && CONTEXT="Branch: $BRANCH"
 LAST_COMMIT=$(git log --oneline -1 2>/dev/null)
-if [ -n "$LAST_COMMIT" ]; then
-  CONTEXT="$CONTEXT | Last commit: $LAST_COMMIT"
-fi
-
+[ -n "$LAST_COMMIT" ] && CONTEXT="$CONTEXT | Last commit: $LAST_COMMIT"
 CHANGES=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-if [ "$CHANGES" -gt 0 ] 2>/dev/null; then
-  CONTEXT="$CONTEXT | Uncommitted changes: $CHANGES files"
-fi
-
-# ──────────────────────────────────────────────
-# Re-inject critical project rules (PT MANAGER)
-# ──────────────────────────────────────────────
+[ "$CHANGES" -gt 0 ] 2>/dev/null && CONTEXT="$CONTEXT | Uncommitted changes: $CHANGES files"
 
 cat <<'RULES'
 === CONTEXT RECOVERED AFTER COMPACTION ===
 
-CRITICAL PROJECT RULES (PT Manager SaaS v1.7):
+CRITICAL PROJECT RULES (Analytics SaaS Backend)
+Stack: Node.js + TypeScript + Express + TimescaleDB + BullMQ + Redis + Drizzle
 
 1. CLEAN ARCHITECTURE - MANDATORY
-   Domain layer: pure business logic (entities, value objects)
-   Application layer: use cases, DTOs, mappers
-   Infrastructure: repositories, Stripe, email, database
-   NEVER bypass layers via direct DB queries from controllers
-   Respect tenant isolation in all queries
-   Business rules = framework-independent
+   Layer order: Domain -> Application -> Infrastructure -> Frameworks
+   Domain: pure entities and business rules, zero external dependencies
+   Application: use cases + contracts (interfaces) + DTOs
+   Infra: controllers, repositories, gateways (Stripe, Slack)
+   Frameworks: Express, Drizzle, BullMQ, Redis setup
+   NEVER put business logic in controllers
+   NEVER let use cases know about HTTP or database specifics
+   Dependency rule: dependencies always point inward
 
 2. MULTI-TENANT ISOLATION - CRITICAL
-   All queries MUST filter by trainer_id (tenant)
-   NEVER expose other trainers' data
-   Client requests: extract trainer_id from JWT owner_trainer_id
-   Test isolation: use separate test trainers per test
-   If you see a query without trainer_id filter, STOP and fix it
+   Every query MUST filter by workspaceId
+   NEVER expose one workspace's data to another
+   workspaceId is extracted from JWT on every request
+   If you see a query without workspaceId filter, STOP and fix it
 
 3. DATABASE MIGRATIONS - NON-NEGOTIABLE
-   Create migrations via python app/db/migrate.py
-   NEVER edit existing migrations (already deployed to prod)
-   New feature → new timestamped migration file in app/db/migrations/
-   Always test UP and DOWN directions before commit
-   Run with: python initdb, migrate_runner, app/db/migrate.py
+   Create migrations via: npm run db:generate
+   Apply migrations via: npm run db:migrate
+   NEVER edit existing migration files (they may be deployed)
+   New feature = new migration file
+   TimescaleDB hypertables: metrics_raw is time-series partitioned by timestamp
 
 4. TESTING REQUIREMENTS
-   Run specific test file after changes (not full suite)
-   Verify behavior, not implementation details
-   One assertion per test. Arrange-Act-Assert structure
-   Mock ONLY at system boundaries (Stripe, email, random, time)
-   If test is flaky: fix or delete, never retry
-   Prefer real implementations over mocks
+   TDD: write tests first, then implementation
+   Coverage: entities 100%, use cases 100%, controllers 85%+
+   Mock only at system boundaries (Stripe, Slack, Redis, BullMQ)
+   Never test implementation details, test behaviour
+   Run before marking done: npm run test
 
-5. CODE QUALITY STANDARDS
-   No dead code or commented blocks (git has history)
-   Don't add features beyond what was asked
-   Naming: PascalCase components, kebab-case utils
-   WHY comments, not WHAT comments
-   Named exports over default exports
-   One class/component per file
+5. TYPE SAFETY
+   Zero `any` types - use proper TypeScript always
+   DTOs defined at use case boundaries
+   Repositories return hydrated entities, never raw DB rows
 
-6. SECURITY REQUIREMENTS
-   Validate ALL user input at API boundary (never trust input)
-   Parameterized queries ONLY (never concatenate user input into SQL)
-   JWT tokens: extract and validate on every request
-   Never log credentials, tokens, or PII
-   Stripe keys: ALWAYS in environment variables
-   Connection strings: ALWAYS in env vars, never hardcoded
-   CORS: whitelist specific origins, never allow *
+6. BACKGROUND JOBS (BullMQ)
+   All workers must be idempotent (safe to retry)
+   Use dead letter queues for failed jobs
+   Aggregation workers: 5min/1h/1d buckets
+   Alert workers: evaluate rules, trigger notifications
 
-7. EMAIL NOTIFICATIONS
-   Use trainer.email from users table (NOT TRAINER_EMAIL env var)
-   Log gracefully if trainer has no email registered
-   Test email logic WITHOUT actually sending (mock Stripe, email)
-   All trainer-directed emails use trainer.email
-   Client emails use client.email
+7. CACHING (Redis)
+   Pattern: Redis first -> cache miss -> DB -> set TTL
+   Cache invalidation non-blocking (fire-and-forget)
+   TTL defined centrally - no magic numbers
+   Always include workspaceId in cache key
 
-8. STRIPE INTEGRATION
-   All Stripe keys in environment variables
-   Test keys (sk_test_*) OK in development
-   LIVE keys (sk_live_*) NEVER in code
-   Handle Stripe webhooks securely
-   Retry logic for transient failures
-   Log Stripe events for audit trail
+8. SECURITY
+   All secrets in environment variables - never hardcoded
+   Parameterized queries only (Drizzle handles this)
+   JWT validated on every authenticated request
+   Stripe keys always in env vars
 
-9. GIT WORKFLOW - PROTECTED
-   Never push directly to main/master/production
-   Create feature branches (feature/*, fix/*, chore/*)
-   All work requires a PR and code review
-   Test suite must pass before merge
-   No force push (use --force-with-lease if necessary)
-   Commit message: type(domain): description
-   Examples: feat(nutrition): add macro editor, fix(auth): JWT validation
+9. INGEST ENDPOINT (high-volume: 10k req/s)
+   Validate with Zod at API boundary
+   Write to BullMQ queue, not directly to DB
+   Response: 202 Accepted (async processing)
 
-10. COMMIT DISCIPLINE
-   Type: feat, fix, refactor, test, docs, chore
-   Format: type(domain): brief description
-   Examples:
-     - feat(nutrition): implement calculator to builder flow
-     - fix(auth): validate JWT on every request
-     - test(training): add progress chart tests
-     - refactor(domain): rename Trainer entity
+10. GIT WORKFLOW
+    Feature branches only: feature/*, fix/*, chore/*
+    Conventional commits: type(domain): description
+    Tests must pass before commit
 
+COMMANDS:
+  npm run dev            # Start server
+  npm run test           # Run tests
+  npm run db:generate    # Create migration
+  npm run db:migrate     # Apply migrations
+  npm run typecheck      # Type check only
 RULES
 
-# ──────────────────────────────────────────────
-# Append dynamic context
-# ──────────────────────────────────────────────
+[ -n "$CONTEXT" ] && echo "" && echo "Current state: $CONTEXT"
 
-if [ -n "$CONTEXT" ]; then
+if [ -f "$ROOT/.claude/CLAUDE.md" ]; then
   echo ""
-  echo "Current state: $CONTEXT"
-fi
-
-# ──────────────────────────────────────────────
-# Re-read CLAUDE.md if it exists (belt and suspenders)
-# ──────────────────────────────────────────────
-
-if [ -f "$ROOT/CLAUDE.md" ]; then
+  echo "=== CLAUDE.md (re-injected) ==="
+  cat "$ROOT/.claude/CLAUDE.md"
+elif [ -f "$ROOT/CLAUDE.md" ]; then
   echo ""
   echo "=== CLAUDE.md (re-injected) ==="
   cat "$ROOT/CLAUDE.md"
@@ -158,5 +119,4 @@ fi
 
 echo ""
 echo "=== END CONTEXT RECOVERY ==="
-
 exit 0

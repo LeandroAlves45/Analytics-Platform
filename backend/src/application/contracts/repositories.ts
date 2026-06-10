@@ -5,7 +5,17 @@
  */
 
 import { Metric } from '@domain/entities/Metric';
-import { ScheduleAggregationInput, AggregationResult } from '@application/dto/AggregationDTO';
+import { ScheduleAggregationRequest, AggregationResult } from '@application/dto/AggregationDTO';
+
+/**
+ * Filtro opcional para leitura de métricas numa janela de agregação específica.
+ * Quando presente, a query usa windowStart em vez de "últimos N minutos desde agora".
+ */
+export interface MetricsWindowFilter {
+  endpoint: string;
+  method: string;
+  windowStart: Date;
+}
 
 /**
  * Resultado de uma tentativa de persistência idempotente.
@@ -38,8 +48,8 @@ export interface MetricsRepository {
   existsByRequestId(requestId: string): Promise<boolean>;
 
   // Devolve métricas recentes de um workspace num intervalo de minutos.
-  // Usado pelos workers de agregação para calcular percentis.
-  getRecent(workspaceId: string, minutes: number): Promise<Metric[]>;
+  // Com filter, restringe ao par endpoint/method e à janela [windowStart, windowStart + minutes).
+  getRecent(workspaceId: string, minutes: number, filter?: MetricsWindowFilter): Promise<Metric[]>;
 
   // Devolve todos os pares únicos (workspaceId, endpoint, method) que tiveram
   // pelo menos uma métrica nos últimos `minutes` minutos.
@@ -54,7 +64,7 @@ export interface AggregationQueueService {
   // Coloca um job na fila para agregar métricas do workspace/endpoint/método indicados.
   // O worker de agregação processa este job de forma assíncrona.
   // Recebe um DTO tipado em vez de parâmetros soltos para escalar sem breaking changes.
-  scheduleAggregation(input: ScheduleAggregationInput): Promise<void>;
+  scheduleAggregation(input: ScheduleAggregationRequest): Promise<void>;
 }
 
 /**

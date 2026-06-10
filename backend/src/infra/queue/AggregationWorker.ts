@@ -85,29 +85,18 @@ export class AggregationWorker {
    * @param job - Job BullMQ com os dados de agregação no campo data
    */
   private async process(job: Job<ScheduleAggregationInput>): Promise<void> {
-    const { workspaceId, endpoint, method, intervalMinutes } = job.data;
-
     logger.info('aggregation_job_processing', {
       jobId: job.id,
-      workspaceId,
-      endpoint,
-      method,
-      intervalMinutes,
+      workspaceId: job.data.workspaceId,
+      endpoint: job.data.endpoint,
+      method: job.data.method,
+      intervalMinutes: job.data.intervalMinutes,
+      windowStart: job.data.windowStart,
       attemptsMade: job.attemptsMade,
     });
 
-    // Passo 1: calcular as estatísticas a partir das métricas raw.
-    // O use case lê de getRecent() (com Cache-Aside) e calcula percentis.
-    const result = await this.aggregateMetricsUseCase.execute({
-      workspaceId,
-      endpoint,
-      method,
-      intervalMinutes,
-    });
+    const result = await this.aggregateMetricsUseCase.execute(job.data);
 
-    // Passo 2: persistir o resultado calculado.
-    // O repositório faz upsert idempotente -> se este job for retried,
-    // a segunda execução atualiza a linha existente sem duplicar.
     await this.aggregationRepository.save(result);
   }
 

@@ -9,7 +9,7 @@
  * - save: persiste na BD → invalida cache do workspace
  */
 
-import { eq, gte, and } from 'drizzle-orm';
+import { eq, gte, and, lt } from 'drizzle-orm';
 import type { Database } from '@infra/frameworks/database';
 
 import { Metric, type HttpMethod } from '@domain/entities/Metric';
@@ -19,6 +19,7 @@ import type {
   MetricsRepository,
   MetricSaveResult,
   ActiveEndpoint,
+  MetricsWindowFilter,
 } from '@application/contracts/repositories';
 import type { MetricsCacheService } from '@application/contracts/cache';
 import { metricsRaw, metricIdempotencyKeys } from '@infra/frameworks/database/schema';
@@ -144,9 +145,15 @@ export class DrizzleMetricsRepository implements MetricsRepository {
    *
    * Se o cache falhar em qualquer passo, o fluxo continua via BD sem erro.
    */
-  async getRecent(workspaceId: string, minutes: number): Promise<Metric[]> {
-    // Passo 1: verificar cache. .catch(() => null) garante fallback para a BD
-    // se qualquer implementação de MetricsCacheService lançar inesperadamente.
+  async getRecent(
+    workspaceId: string,
+    minutes: number,
+    filter?: MetricsWindowFilter
+  ): Promise<Metric[]> {
+    if (filter !== undefined) {
+      return this.getRecentForWindow(workspaceId, minutes, filter);
+    }
+
     const cached = await this.cache.getRecent(workspaceId, minutes).catch(() => null);
 
     if (cached !== null) {
@@ -182,6 +189,50 @@ export class DrizzleMetricsRepository implements MetricsRepository {
       throw new AppError('Failed to retrieve recent metrics', 'INTERNAL_SERVER_ERROR', 500, {
         cause: error as Error,
       });
+    }
+  }
+
+  private async getRecentForWindow(
+    workspaceId: string,
+    intervalMinutes: number,
+    filter: MetricsWindowFilter
+  ): Promise<Metric[]> {
+    const windowEnd = new Date(filter.windowStart.getTime() + intervalMinutes * 60 * 1_000);
+
+    try {
+      const rows = await this.db
+        .select()
+        .from(metricsRaw)
+        .where(
+          and(
+            eq(metricsRaw.workspaceId, workspaceId),
+            eq(metricsRaw.endpoint, filter.endpoint),
+            eq(metricsRaw.method, filter.method),
+            gte(metricsRaw.time, filter.windowStart),
+            lt(metricsRaw.time, windowEnd)
+          )
+        )
+        .orderBy(metricsRaw.time);
+
+      return rows.map((row) => this.hydrateMetric(row));
+    } catch (error) {
+      logger.error('metric_get_recent_for_window_failed', {
+        workspaceId,
+        intervalMinutes,
+        endpoint: filter.endpoint,
+        method: filter.method,
+        windowStart: filter.windowStart,
+        error,
+      });
+
+      throw new AppError(
+        'Failed to retrieve metrics for aggregation window',
+        'INTERNAL_SERVER_ERROR',
+        500,
+        {
+          cause: error as Error,
+        }
+      );
     }
   }
 

@@ -11,6 +11,10 @@
  */
 
 module.exports = {
+  // testTimeout ao nível global — não é uma opção válida a nível de projecto.
+  // Aplica-se a todos os testes (unit + integration).
+  testTimeout: 30000,
+
   // Quando não especificado, corre todos os projectos
   projects: [
     // -------------------------------------------------------------------
@@ -53,10 +57,8 @@ module.exports = {
         '^@infra/(.*)$': '<rootDir>/src/infra/$1',
         '^@shared/(.*)$': '<rootDir>/src/shared/$1',
       },
-      // Setup específico de integração: timeout maior, variáveis de ambiente de teste
+      // Setup específico de integração.
       setupFilesAfterEnv: ['<rootDir>/tests/integration/setup.ts'],
-      // Timeout por teste: 30s
-      testTimeout: 30000,
     },
   ],
 

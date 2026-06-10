@@ -15,7 +15,7 @@ import { AppError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
 import { MetricsRepository, AggregationQueueService } from '@application/contracts/repositories';
 import { RecordMetricInputDTO, RecordMetricOutputDTO } from '@application/dto/MetricsDTO';
-import type { ScheduleAggregationInput } from '@application/dto/AggregationDTO';
+import type { ScheduleAggregationRequest } from '@application/dto/AggregationDTO';
 
 /**
  * Use case para registar uma métrica.
@@ -96,7 +96,7 @@ export class RecordMetricUseCase {
     // Passo 4: agendar agregação em background.
     // Best-effort -> o worker de retry trata falhas de fila.
     try {
-      const aggregationInput: ScheduleAggregationInput = {
+      const aggregationInput: ScheduleAggregationRequest = {
         workspaceId: input.workspaceId,
         endpoint: input.endpoint,
         method: input.method,
