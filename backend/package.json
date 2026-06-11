@@ -25,7 +25,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:coverage:unit": "jest --selectProjects unit --coverage",
-    "test:coverage:integration": "jest --selectProjects integration --coverage --coverageThreshold={}",
+    "test:coverage:integration": "jest --selectProjects integration --coverage --coverageThreshold={} --runInBand",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/infra/frameworks/database/migrate.ts",
     "db:hypertables": "tsx src/infra/frameworks/database/migrate.ts --hypertables-only",

@@ -95,7 +95,14 @@ export class AggregationWorker {
       attemptsMade: job.attemptsMade,
     });
 
-    const result = await this.aggregateMetricsUseCase.execute(job.data);
+    // BullMQ serializa os dados do trabalho como JSON, portanto os campos de data são retornados como ISO strings.
+    // Reconstrução do windowStart como uma Date antes de passar para o use case.
+    const input = {
+      ...job.data,
+      windowStart: new Date(job.data.windowStart as unknown as string),
+    };
+
+    const result = await this.aggregateMetricsUseCase.execute(input);
 
     await this.aggregationRepository.save(result);
   }
