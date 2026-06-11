@@ -3,11 +3,10 @@
  * cria a entidade de domínio e coordena os serviços necessários.
  *
  * O que este use case faz, por ordem:
- * 1. Verifica se o request já foi processado (idempotência)
- * 2. Cria a entidade Metric (validações de domínio executadas aqui)
- * 3. Persiste a métrica (o repositório invalida o cache internamente)
- * 4. Agenda worker de agregação
- * 5. Devolve confirmação ao controller
+ * 1. Cria a entidade Metric (validações de domínio executadas aqui)
+ * 2. Persiste a métrica — ON CONFLICT DO NOTHING garante idempotência
+ * 3. Agenda worker de agregação
+ * 4. Devolve confirmação ao controller
  */
 
 import { Metric } from '@domain/entities/Metric';
@@ -30,23 +29,7 @@ export class RecordMetricUseCase {
   ) {}
 
   async execute(input: RecordMetricInputDTO): Promise<RecordMetricOutputDTO> {
-    // Passo 1: verificar idempotência.
-    // Duplicado explícito detectado antes do save, retorna HTTP 409 CONFLICT ao chamador
-    const alreadyExists = await this.metricsRepository.existsByRequestId(input.requestId);
-
-    if (alreadyExists) {
-      // Não é um erro — é um comportamento esperado em sistemas distribuídos.
-      // Logamos como info para rastreabilidade, mas processamos normalmente.
-      logger.info('metric_already_recorded', {
-        requestId: input.requestId,
-        workspaceId: input.workspaceId,
-      });
-
-      // Lançamos erro específico para o controller tratar com HTTP 409 Conflict.
-      throw new AppError('Metric with this requestId was already recorded', 'CONFLICT', 409);
-    }
-
-    // Passo 2: criar a entidade.
+    // Passo 1: criar a entidade.
     // O constructor da Metric valida todas as regras de negócio.
     // Se os dados forem inválidos, ValidationError é lançado aqui.
     const metric = new Metric({

@@ -27,7 +27,13 @@ import { AggregateMetricsUseCase } from '@application/usecases/aggregation/Aggre
 import { AggregationWorker } from '@infra/queue/AggregationWorker';
 import { AggregationScheduler } from '@infra/queue/AggregationScheduler';
 import { MetricsController } from '@infra/controllers/MetricsController';
+import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
+import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
+import { ListActiveEndpointsUseCase } from '@application/usecases/metrics/ListActiveEndpointsUseCase';
+import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
+import { EndpointsController } from '@infra/controllers/EndpointsController';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
+import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
 
 /**
  * Tipo que descreve o conjunto de routers prontos a montar no app Express.
@@ -35,6 +41,7 @@ import { createMetricsRouter } from '@infra/routes/metricsRouter';
  */
 export interface AppRouters {
   metricsRouter: Router;
+  endpointsRouter: Router;
 }
 
 /**
@@ -77,12 +84,17 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
   // DrizzleMetricsRepository usa o cache em getRecent() e invalida em save().
   const metricsRepository = new DrizzleMetricsRepository(db, metricsCache);
   const aggregationRepository = new DrizzleAggregationRepository(db);
+  const aggregationReadRepository = new DrizzleAggregationReadRepository(db);
 
   // Passo 4: queue BullMQ
   const aggregationQueue = new BullMQAggregationQueue(bullMQRedisClient);
 
   // Passo 5: use case com repositório e queue
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
+  const queryAggregatedMetricsUseCase = new QueryAggregatedMetricsUseCase(
+    aggregationReadRepository
+  );
+  const listActiveEndpointsUseCase = new ListActiveEndpointsUseCase(metricsRepository);
   const aggregateMetricsUseCase = new AggregateMetricsUseCase(metricsRepository);
 
   // Passo 6: workers e scheduler
@@ -98,10 +110,14 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
 
   // Passo 7: controller e router
   const metricsController = new MetricsController(recordMetricUseCase);
-  const metricsRouter = createMetricsRouter(metricsController);
+  const metricsQueryController = new MetricsQueryController(queryAggregatedMetricsUseCase);
+  const endpointsController = new EndpointsController(listActiveEndpointsUseCase);
+
+  const metricsRouter = createMetricsRouter(metricsController, metricsQueryController);
+  const endpointsRouter = createEndpointsRouter(endpointsController);
 
   return {
-    routers: { metricsRouter },
+    routers: { metricsRouter, endpointsRouter },
     lifecycle: { aggregationScheduler, aggregationWorker, aggregationQueue },
   };
 }

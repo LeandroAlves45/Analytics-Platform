@@ -64,12 +64,23 @@ export function createApp(): Express {
     next();
   });
 
-  // Cabeçalhos CORS para permitir pedidos cross-origin.
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    const corsOrigin = process.env['CORS_ORIGIN'] ?? 'http://localhost:3000';
+  /**
+   * CORS + preflight OPTIONS.
+   *
+   * Browsers enviam OPTIONS antes de pedidos cross-origin com Authorization.
+   * Responder 204 aqui evita que o preflight caia no handler 404.
+   */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const corsOrigin = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
+
     res.header('Access-Control-Allow-Origin', corsOrigin);
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
+
+    if (req.method === 'OPTIONS') {
+      res.status(204);
+      return;
+    }
     next();
   });
 
@@ -111,6 +122,7 @@ export function createApp(): Express {
  */
 export function registerRoutes(app: Express, routers: AppRouters): void {
   app.use('/api/metrics', routers.metricsRouter);
+  app.use('/api/endpoints', routers.endpointsRouter);
 
   // Handler de 404 — só chega aqui se nenhum router acima correspondeu ao path.
   // Deve ficar depois de todos os routers para não interceptar rotas válidas.

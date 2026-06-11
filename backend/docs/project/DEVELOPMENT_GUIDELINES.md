@@ -96,7 +96,7 @@ const fetchMetrics = async (): Promise<void> => {
     return metrics;
   } catch (error) {
     logger.error('fetch_metrics_failed', { error });
-    throw new AppError('Failed to fetch metrics', 500);
+    throw new AppError('Failed to fetch metrics', 'INTERNAL_SERVER_ERROR', 500);
   }
 };
 ```

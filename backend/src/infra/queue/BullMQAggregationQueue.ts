@@ -58,9 +58,10 @@ export class BullMQAggregationQueue implements AggregationQueueService {
    * Coloca um job de agregação na fila.
    *
    * windowStart é fixado aqui para que jobs atrasados persistam na janela correcta.
+   * Quando input.windowStart é fornecido (ex: janela anterior), usa-o directamente.
    */
   async scheduleAggregation(input: ScheduleAggregationRequest): Promise<void> {
-    const windowStart = truncateToInterval(new Date(), input.intervalMinutes);
+    const windowStart = input.windowStart ?? truncateToInterval(new Date(), input.intervalMinutes);
     const payload: ScheduleAggregationInput = { ...input, windowStart };
     const jobId = buildAggregationJobId(payload);
 

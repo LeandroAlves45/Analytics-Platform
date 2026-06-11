@@ -1,4 +1,3 @@
-// config.ts
 /**
  * Configuração global de variáveis de ambiente
  * Carrega variáveis do arquivo .env
@@ -23,7 +22,7 @@ const envSchema = z.object({
 
   // Server
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
 
   // Database
   DATABASE_HOST: z.string().min(1),

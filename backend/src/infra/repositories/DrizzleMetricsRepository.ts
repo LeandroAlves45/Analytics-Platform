@@ -280,6 +280,57 @@ export class DrizzleMetricsRepository implements MetricsRepository {
     }
   }
 
+  /**
+   * Devolve endpoints ativos de um workspace específico.
+   *
+   * Diferente de getActiveEndpoints(minutes) que devolve todos os workspaces
+   * (usado pelo AggregationScheduler). Este método filtra por tenant para
+   * a Read API do dashboard.
+   */
+  async getActiveEndpointsForWorkspace(
+    workspaceId: string,
+    minutes: number
+  ): Promise<ActiveEndpoint[]> {
+    try {
+      const since = new Date(Date.now() - minutes * 60 * 1_000);
+
+      const rows = await this.db
+        .selectDistinct({
+          workspaceId: metricsRaw.workspaceId,
+          endpoint: metricsRaw.endpoint,
+          method: metricsRaw.method,
+        })
+        .from(metricsRaw)
+        .where(and(eq(metricsRaw.workspaceId, workspaceId), gte(metricsRaw.time, since)));
+
+      logger.debug('metrics_get_active_endpoints_for_workspace', {
+        workspaceId,
+        minutes,
+        count: rows.length,
+      });
+
+      return rows.map((row) => ({
+        workspaceId: row.workspaceId,
+        endpoint: row.endpoint,
+        method: row.method,
+      }));
+    } catch (error) {
+      logger.error('metrics_get_active_endpoints_for_workspace_failed', {
+        workspaceId,
+        minutes,
+        error,
+      });
+
+      throw new AppError(
+        'Failed to retrieve active endpoints for workspace',
+        'INTERNAL_SERVER_ERROR',
+        500,
+        {
+          cause: error as Error,
+        }
+      );
+    }
+  }
   // Converte uma linha da base de dados numa entidade Metric válida.
   // Delegação de validação: todas as regras de domínio (UUID format, HTTP method validity,
   // latency/statusCode ranges) são orquestradas por Metric.validate() no constructor.

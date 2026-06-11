@@ -42,7 +42,7 @@ describe('AggregationScheduler', () => {
   });
 
   describe('run() -> queuing logic', () => {
-    it('should queue 3 jobs per active endpoint (one per granularity)', async () => {
+    it('should queue 6 jobs per active endpoint (2 windows × 3 granularities)', async () => {
       const activeEndpoints: ActiveEndpoint[] = [
         { workspaceId: TEST_WORKSPACE_ID, endpoint: '/api/users', method: 'GET' },
       ];
@@ -54,10 +54,10 @@ describe('AggregationScheduler', () => {
       scheduler.start();
       await waitForSchedulerRun();
 
-      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(3);
+      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(6);
     });
 
-    it('should queue jobs with intervalMinutes correctly: 5, 60, 1440', async () => {
+    it('should queue jobs with intervalMinutes correctly: 5, 60, 1440 (current and previous)', async () => {
       const endpoint: ActiveEndpoint = {
         workspaceId: TEST_WORKSPACE_ID,
         endpoint: '/api/users',
@@ -74,7 +74,38 @@ describe('AggregationScheduler', () => {
         (call) => call[0].intervalMinutes
       );
 
-      expect(calledIntervals).toEqual(expect.arrayContaining([5, 60, 1440]));
+      // Each granularity appears twice (current window + previous window)
+      expect(calledIntervals.filter((i) => i === 5)).toHaveLength(2);
+      expect(calledIntervals.filter((i) => i === 60)).toHaveLength(2);
+      expect(calledIntervals.filter((i) => i === 1440)).toHaveLength(2);
+    });
+
+    it('should enqueue previous window with windowStart exactly one interval before current', async () => {
+      const endpoint: ActiveEndpoint = {
+        workspaceId: TEST_WORKSPACE_ID,
+        endpoint: '/api/users',
+        method: 'GET',
+      };
+      const repository = makeMockRepository([endpoint]);
+      const queue = makeMockQueue();
+      const scheduler = new AggregationScheduler(repository, queue);
+
+      scheduler.start();
+      await waitForSchedulerRun();
+
+      // For 5-minute granularity: one call has no windowStart (current), one has explicit windowStart (previous)
+      const fiveMinCalls = queue.scheduleAggregation.mock.calls.filter(
+        (call) => call[0].intervalMinutes === 5
+      );
+      const currentWindowCall = fiveMinCalls.find((call) => call[0].windowStart === undefined);
+      const prevWindowCall = fiveMinCalls.find((call) => call[0].windowStart !== undefined);
+
+      expect(currentWindowCall).toBeDefined();
+      expect(prevWindowCall).toBeDefined();
+
+      // Previous windowStart must be exactly 5 minutes before current
+      const prevWindowStart = prevWindowCall![0].windowStart as Date;
+      expect(prevWindowStart).toBeInstanceOf(Date);
     });
 
     it('should queue jobs for each active endpoint', async () => {
@@ -89,7 +120,7 @@ describe('AggregationScheduler', () => {
       scheduler.start();
       await waitForSchedulerRun();
 
-      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(6);
+      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(12);
     });
 
     it('should call getActiveEndpoints with the maximum supported interval (1440 min)', async () => {
@@ -147,7 +178,7 @@ describe('AggregationScheduler', () => {
       scheduler.start();
       await waitForSchedulerRun();
 
-      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(6);
+      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(12);
     });
   });
 
@@ -183,7 +214,7 @@ describe('AggregationScheduler', () => {
       scheduler.start();
       await waitForSchedulerRun();
 
-      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(3);
+      expect(queue.scheduleAggregation).toHaveBeenCalledTimes(6);
     });
 
     it('should call stop() and cancel the execution of the next cycle', async () => {

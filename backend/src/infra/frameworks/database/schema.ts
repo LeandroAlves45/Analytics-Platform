@@ -124,7 +124,7 @@ export const metricIdempotencyKeys = pgTable('metric_idempotency_keys', {
  * Retenção: 90 dias.
  * Unique constraint em (time, workspaceId, endpoint, method) garante
  * idempotência do upsert: se o worker processar o mesmo job duas vezes,
- * a segunda execução actualiza a linha existente em vez de criar duplicado.
+ * a segunda execução atualiza a linha existente em vez de criar duplicado.
  */
 export const metrics5min = pgTable(
   'metrics_5min',
@@ -700,7 +700,7 @@ export const stripeSubscriptions = pgTable(
     // Estado da subscrição: active, past_due, canceled, unpaid
     status: varchar('status').notNull(),
 
-    // Período de facturação atual
+    // Período de faturação atual
     currentPeriodStart: date('current_period_start'),
     currentPeriodEnd: date('current_period_end'),
 

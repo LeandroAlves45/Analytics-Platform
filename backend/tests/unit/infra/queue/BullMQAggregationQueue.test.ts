@@ -7,7 +7,7 @@
  * - O payload deve conter windowStart como Date
  *
  * Se alguém alterar buildAggregationJobId ou as opções de deduplication
- * sem actualizar o outro, estes testes falham antes de chegar a produção.
+ * sem atualizar o outro, estes testes falham antes de chegar a produção.
  */
 
 import { Queue } from 'bullmq';
@@ -85,6 +85,16 @@ describe('BullMQAggregationQueue', () => {
       const service = new BullMQAggregationQueue({} as Redis);
 
       await expect(service.scheduleAggregation(BASE_REQUEST)).rejects.toThrow('Redis unavailable');
+    });
+
+    it('should use explicit windowStart when provided instead of computing from current time', async () => {
+      const explicitWindowStart = new Date('2026-01-01T14:00:00.000Z');
+      const service = new BullMQAggregationQueue({} as Redis);
+
+      await service.scheduleAggregation({ ...BASE_REQUEST, windowStart: explicitWindowStart });
+
+      const [, payload] = mockAdd.mock.calls[0] as [unknown, { windowStart: unknown }];
+      expect(payload.windowStart).toEqual(explicitWindowStart);
     });
   });
 });

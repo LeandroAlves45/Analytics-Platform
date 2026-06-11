@@ -5,7 +5,7 @@
  * - Receber um AggregationResult calculado pelo use case
  * - Determinar qual tabela usar com base no intervalMinutes
  * - Fazer upsert idempotente: se o job for processado duas vezes,
- *   a segunda execução actualiza a linha existente em vez de duplicar
+ *   a segunda execução atualiza a linha existente em vez de duplicar
  */
 
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -35,7 +35,7 @@ export class DrizzleAggregationRepository {
    *
    * Usa upsert (INSERT ... ON CONFLICT DO UPDATE) para garantir idempotência:
    * se o mesmo job for processado duas vezes pelo worker (retry após crash),
-   * o segundo upsert actualiza os valores em vez de criar uma linha duplicada.
+   * o segundo upsert atualiza os valores em vez de criar uma linha duplicada.
    *
    * @param result - Resultado calculado pelo AggregateMetricsUseCase
    * @throws AppError se intervalMinutes não corresponder a uma tabela suportada

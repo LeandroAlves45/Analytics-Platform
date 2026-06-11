@@ -11,6 +11,7 @@
 import { logger } from '@infra/frameworks/logging';
 import type { MetricsRepository } from '@application/contracts/repositories';
 import type { AggregationQueueService } from '@application/contracts/repositories';
+import { truncateToInterval } from '@shared/date-utils/truncate-to-interval';
 
 // Granularidades suportadas em minutos.
 const AGGREGATION_INTERVALS_MINUTES = [5, 60, 1440] as const;
@@ -95,23 +96,47 @@ export class AggregationScheduler {
         return;
       }
 
+      // Capturar "now" uma vez para consistência entre granularidades no mesmo ciclo.
+      const now = new Date();
+
+      // Cada granularidade enfileira 2 janelas: atual + anterior.
+      // A janela anterior é re-agregada para captar métricas tardias (até ~5 min de lag).
+      // A deduplicação BullMQ (TTL = intervalMinutes) impede re-runs desnecessários:
+      // o TTL da janela anterior expira exactamente quando o próximo intervalo começa,
+      // portanto a re-agregação corre uma única vez logo após a janela fechar.
+      const jobsPerInterval = 2; // current window + previous window
+
       logger.info('aggregation_scheduler_enqueuing_jobs', {
         endpointsCount: activeEndpoints.length,
-        jobCount: activeEndpoints.length * AGGREGATION_INTERVALS_MINUTES.length,
+        jobCount: activeEndpoints.length * AGGREGATION_INTERVALS_MINUTES.length * jobsPerInterval,
       });
 
       // Para cada endpoint ativo, enfileira um job por granularidade.
       // Promise.allSettled() garante que um endpoint falhado não bloqueia o ciclo seguinte.
       const results = await Promise.allSettled(
         activeEndpoints.flatMap((endpoint) =>
-          AGGREGATION_INTERVALS_MINUTES.map((intervalMinutes) =>
-            this.aggregationQueueService.scheduleAggregation({
-              workspaceId: endpoint.workspaceId,
-              endpoint: endpoint.endpoint,
-              method: endpoint.method,
-              intervalMinutes,
-            })
-          )
+          AGGREGATION_INTERVALS_MINUTES.flatMap((intervalMinutes) => {
+            const currentWindowStart = truncateToInterval(now, intervalMinutes);
+            const prevWindowStart = new Date(
+              currentWindowStart.getTime() - intervalMinutes * 60 * 1_000
+            );
+
+            return [
+              this.aggregationQueueService.scheduleAggregation({
+                workspaceId: endpoint.workspaceId,
+                endpoint: endpoint.endpoint,
+                method: endpoint.method,
+                intervalMinutes,
+              }),
+              this.aggregationQueueService.scheduleAggregation({
+                workspaceId: endpoint.workspaceId,
+                endpoint: endpoint.endpoint,
+                method: endpoint.method,
+                intervalMinutes,
+                windowStart: prevWindowStart,
+              }),
+            ];
+          })
         )
       );
       // Conta sucesso e falhas para observabilidade.

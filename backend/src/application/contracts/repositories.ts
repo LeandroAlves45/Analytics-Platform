@@ -6,6 +6,10 @@
 
 import { Metric } from '@domain/entities/Metric';
 import { ScheduleAggregationRequest, AggregationResult } from '@application/dto/AggregationDTO';
+import type {
+  QueryAggregatedMetricsInputDTO,
+  AggregatedMetricRow,
+} from '@application/dto/MetricsQueryDTO';
 
 /**
  * Filtro opcional para leitura de métricas numa janela de agregação específica.
@@ -54,6 +58,10 @@ export interface MetricsRepository {
   // Devolve todos os pares únicos (workspaceId, endpoint, method) que tiveram
   // pelo menos uma métrica nos últimos `minutes` minutos.
   getActiveEndpoints(minutes: number): Promise<ActiveEndpoint[]>;
+
+  // Devolve endpoints ativos de um workspace específico
+  // Usado pelo dashboard para popular filtros de consulta
+  getActiveEndpointsForWorkspace(workspaceId: string, minutes: number): Promise<ActiveEndpoint[]>;
 }
 
 /**
@@ -88,4 +96,14 @@ export interface ApiKeyRepository {
 
   // Atualiza o campo last_used_at de uma API key.
   updateLastUsed(apiKey: string): Promise<void>;
+}
+
+/**
+ * Contrato para leitura das tabelas de agregação (metrics_5min / 1h / 1d).
+ * Separado de AggregationRepository (escrita) para respeitar CQS.
+ */
+export interface AggregationReadRepository {
+  // Consulta métricas agregadas num intervalo de tempo.
+  // Resultados ordenados por time asc.
+  findAggregatedMetrics(input: QueryAggregatedMetricsInputDTO): Promise<AggregatedMetricRow[]>;
 }

@@ -21,6 +21,7 @@ describe('RecordMetricUseCase', () => {
       save: jest.fn().mockResolvedValue('saved'),
       existsByRequestId: jest.fn().mockResolvedValue(false),
       getRecent: jest.fn().mockResolvedValue([]),
+      getActiveEndpoints: jest.fn().mockResolvedValue([]),
     };
 
     aggregationQueue = {
@@ -63,12 +64,6 @@ describe('RecordMetricUseCase', () => {
       });
     });
 
-    it('should check for duplicate requestId before saving metric', async () => {
-      await useCase.execute(validInput);
-
-      expect(metricsRepository.existsByRequestId).toHaveBeenCalledWith(validInput.requestId);
-    });
-
     it('should pass optional fields through to the saved metric', async () => {
       const inputWithOptionalFields = {
         ...validInput,
@@ -91,22 +86,7 @@ describe('RecordMetricUseCase', () => {
 
   // Grupo 2: idempotência
   describe('execute -> duplicate requestId', () => {
-    it('should throw AppError with 409 when requestId already exists', async () => {
-      metricsRepository.existsByRequestId.mockResolvedValue(true);
-
-      await expect(useCase.execute(validInput)).rejects.toThrow(AppError);
-    });
-
-    it('should throw 409 CONFLICT with correct code for duplicate requestId', async () => {
-      metricsRepository.existsByRequestId.mockResolvedValue(true);
-
-      await expect(useCase.execute(validInput)).rejects.toMatchObject({
-        statusCode: 409,
-        code: 'CONFLICT',
-      });
-    });
-
-    it('should throw 409 when repository save returns duplicate (concurrent race)', async () => {
+    it('should throw 409 when repository save returns duplicate', async () => {
       metricsRepository.save.mockResolvedValue('duplicate');
 
       await expect(useCase.execute(validInput)).rejects.toMatchObject({

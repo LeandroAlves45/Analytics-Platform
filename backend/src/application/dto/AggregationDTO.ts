@@ -20,6 +20,13 @@ export interface ScheduleAggregationRequest {
 
   /** Duração da janela de tempo em minutos */
   intervalMinutes: number;
+
+  /**
+   * Override opcional do início da janela.
+   * Quando omitido, o producer calcula truncateToInterval(now, intervalMinutes).
+   * Usar para enfileirar a janela anterior e captar métricas tardias.
+   */
+  windowStart?: Date;
 }
 
 /** Payload completo do job BullMQ — windowStart fixado no momento do enqueue */

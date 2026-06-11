@@ -446,6 +446,11 @@ src/
 │   │   ├── DrizzleAggregationRepository.ts (Sprint 3 — upsert to metrics_5min/1h/1d)
 │   │   ├── DrizzleAlertRepository.ts
 │   │   └── RedisMetricsCache.ts
+│   ├── queue/             (Sprint 3 — producer, consumer, scheduler)
+│   │   ├── BullMQAggregationQueue.ts   (producer — enfileira jobs)
+│   │   ├── AggregationWorker.ts        (consumer — processa jobs BullMQ)
+│   │   ├── AggregationScheduler.ts     (trigger periódico a cada 5min)
+│   │   └── NoOpAggregationQueueService.ts
 │   ├── gateways/
 │   │   ├── StripeGateway.ts
 │   │   └── SlackGateway.ts
@@ -466,11 +471,6 @@ src/
 │       │   └── drizzle.config.ts
 │       ├── cache/
 │       │   └── redis.ts  (dual-client: cache + BullMQ with separate configs — Sprint 3)
-│       ├── queue/        (Sprint 3 — all implemented)
-│       │   ├── BullMQAggregationQueue.ts   (producer)
-│       │   ├── AggregationWorker.ts        (consumer)
-│       │   ├── AggregationScheduler.ts     (periodic trigger every 5min)
-│       │   └── NoOpAggregationQueueService.ts
 │       └── external/
 │           ├── stripe.ts
 │           ├── slack.ts
@@ -500,14 +500,20 @@ tests/
 │   ├── application/
 │   │   └── usecases/
 │   │       ├── RecordMetricUseCase.test.ts
+│   │       ├── AggregateMetricsUseCase.test.ts  (Sprint 3)
 │   │       └── EvaluateAlertsUseCase.test.ts
 │   └── infra/
 │       ├── repositories/
 │       │   └── DrizzleMetricsRepository.test.ts
-│       └── controllers/
-│           └── MetricsController.test.ts
+│       ├── controllers/
+│       │   └── MetricsController.test.ts
+│       └── queue/                               (Sprint 3)
+│           ├── AggregationScheduler.test.ts
+│           ├── AggregationWorker.test.ts
+│           └── BullMQAggregationQueue.test.ts
 ├── integration/
 │   ├── metrics.integration.test.ts
+│   ├── aggregation.integration.test.ts          (Sprint 3)
 │   └── alerts.integration.test.ts
 └── e2e/
     └── api.e2e.test.ts

@@ -8,11 +8,12 @@
  *   4. Formatar a resposta HTTP
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
-import { UnauthorizedError } from '@shared/errors';
+import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
+import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
 
 /**
  * Schema Zod para validar o body do request de ingestão.
@@ -52,59 +53,6 @@ const ingestMetricSchema = z.object({
  * Evitamos definir o tipo manualmente e depois manter dois sítios sincronizados.
  */
 type IngestMetricBody = z.infer<typeof ingestMetricSchema>;
-
-/**
- * Request autenticado — workspaceId e apiKeyId são injectados pelo AuthMiddleware.
- *
- * Em testes de integração, simulateAuthMiddleware preenche estes campos.
- * Em produção sem ambos, resolveTenantContext rejeita o pedido com 401.
- */
-export interface AuthenticatedRequest extends Request {
-  workspaceId?: string;
-  apiKeyId?: string;
-}
-
-/**
- * UUIDs de fallback para ambientes não-produção enquanto o AuthMiddleware
- * (Sprint 6) não injecta req.workspaceId / req.apiKeyId.
- *
- * Em produção, pedidos sem contexto de autenticação recebem 401 — estes IDs
- * nunca são usados quando NODE_ENV === 'production'.
- *
- * TODO(leandro): remover fallback quando AuthMiddleware estiver activo (#sprint-6)
- */
-const DEV_WORKSPACE_ID = '00000000-0000-4000-8000-000000000000';
-const DEV_API_KEY_ID = '00000000-0000-4000-8000-000000000001';
-
-/**
- * Resolve workspaceId e apiKeyId a partir do request autenticado.
- *
- * - Com ambos presentes: usa os valores injectados pelo AuthMiddleware (ou test double).
- * - Em produção sem contexto: lança UnauthorizedError (401 via ErrorHandlerMiddleware).
- * - Em development/test: fallback para DEV_* UUIDs para permitir ingestão local.
- *
- * TODO(leandro): remover fallback DEV quando AuthMiddleware exigir auth em todos os ambientes (#sprint-6)
- */
-function resolveTenantContext(req: AuthenticatedRequest): {
-  workspaceId: string;
-  apiKeyId: string;
-} {
-  const workspaceId = req.workspaceId;
-  const apiKeyId = req.apiKeyId;
-
-  if (workspaceId && apiKeyId) {
-    return { workspaceId, apiKeyId };
-  }
-
-  if (process.env.NODE_ENV === 'production') {
-    throw new UnauthorizedError('API key authentication required');
-  }
-
-  return {
-    workspaceId: workspaceId ?? DEV_WORKSPACE_ID,
-    apiKeyId: apiKeyId ?? DEV_API_KEY_ID,
-  };
-}
 
 /**
  * Controller para ingestão de métricas.
@@ -180,3 +128,5 @@ export class MetricsController {
     }
   };
 }
+
+export type { AuthenticatedRequest };

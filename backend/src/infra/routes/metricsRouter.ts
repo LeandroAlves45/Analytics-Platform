@@ -1,25 +1,24 @@
 /**
- * Router dedicado às rotas de ingestão de métricas.
+ * Router dedicado às rotas de métricas (ingestão + consulta agregada).
  *
  * Este ficheiro define APENAS o mapeamento entre
  * HTTP verb + path → método do controller.
- *
- * Não instancia dependências. Recebe o controller
- * já construído como parâmetro (Composition Root pattern).
  */
 
 import { Router } from 'express';
 import { MetricsController } from '@infra/controllers/MetricsController';
+import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
 
 /**
  * Cria e configura o router de métricas.
  *
- * @param controller - Instância do MetricsController criada no bootstrap.
- *                     Receber como parâmetro garante que este ficheiro
- *                     nunca instancia dependências directamente.
- * @returns Router Express configurado com as rotas de métricas.
+ * @param ingestController - POST /api/metrics
+ * @param queryController  - GET /api/metrics/aggregated
  */
-export function createMetricsRouter(controller: MetricsController): Router {
+export function createMetricsRouter(
+  ingestController: MetricsController,
+  queryController: MetricsQueryController
+): Router {
   const router = Router();
 
   /**
@@ -34,7 +33,15 @@ export function createMetricsRouter(controller: MetricsController): Router {
    *   409 Conflict       — requestId duplicado
    *   500 Internal       — erro inesperado (tratado pelo errorHandlerMiddleware)
    */
-  router.post('/', controller.ingest);
+  router.post('/', ingestController.ingest);
+
+  /**
+   * GET /aggregated
+   * Consulta de série temporal agregada.
+   *
+   * Query params: from, to, interval, endpoint?, method?
+   */
+  router.get('/aggregated', queryController.getAggregated);
 
   return router;
 }
