@@ -30,7 +30,7 @@ export class EndpointsController {
    * Handler de GET /api/endpoints
    */
   list = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    const parseResult = listEndpointsSchema.safeParse(req.query);
+    const parseResult = listEndpointsSchema.safeParse(req.query ?? {});
 
     if (!parseResult.success) {
       res.status(422).json({

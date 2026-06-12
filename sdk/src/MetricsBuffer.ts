@@ -126,7 +126,7 @@ export class MetricsBuffer extends EventEmitter {
     // Copia o buffer atual e limpa o original atomicamente.
     // Usar slice() cria um novo array com os mesmos elementos.
     // Limpar imediatamente evita que métricas adicionadas durante o envio
-    // sejam incluídas no batch actual ou perdidas.
+    // sejam incluídas no batch atual ou perdidas.
     const metricsToSend = this.buffer.slice();
     this.buffer = [];
 

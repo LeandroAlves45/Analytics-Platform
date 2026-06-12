@@ -73,6 +73,7 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
   logger.error('database_setup_failed', {
     error: error instanceof Error ? error.message : 'Unknown',
+    stack: error instanceof Error ? error.stack : undefined,
   });
   process.exit(1);
 });

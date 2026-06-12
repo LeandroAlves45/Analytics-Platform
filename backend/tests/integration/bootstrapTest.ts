@@ -23,13 +23,20 @@ import { getDatabase } from '@infra/frameworks/database';
 import { NoOpMetricsCacheService } from '@infra/cache/NoOpMetricsCacheService';
 import { NoOpAggregationQueueService } from '@infra/queue/NoOpAggregationQueueService';
 import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
+import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
+import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
+import { ListActiveEndpointsUseCase } from '@application/usecases/metrics/ListActiveEndpointsUseCase';
 import { MetricsController, AuthenticatedRequest } from '@infra/controllers/MetricsController';
+import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
+import { EndpointsController } from '@infra/controllers/EndpointsController';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
+import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
 import { TEST_API_KEY_ID, TEST_WORKSPACE_ID } from '../fixtures/metrics';
 
 export interface TestAppRouters {
   metricsRouter: Router;
+  endpointsRouter: Router;
 }
 
 /**
@@ -46,6 +53,17 @@ function simulateAuthMiddleware(
   req.apiKeyId = TEST_API_KEY_ID;
   next();
 }
+/**
+ *
+ * @param router - O router a ser autenticado.
+ * @returns Um novo router com o middleware de autenticação.
+ */
+function withAuth(router: Router): Router {
+  const wrapped = Router();
+  wrapped.use(simulateAuthMiddleware);
+  wrapped.use(router);
+  return wrapped;
+}
 
 export function bootstrapForTesting(): TestAppRouters {
   const db = getDatabase();
@@ -55,15 +73,26 @@ export function bootstrapForTesting(): TestAppRouters {
 
   const metricsRepository = new DrizzleMetricsRepository(db, metricsCache);
 
+  const aggregationReadRepository = new DrizzleAggregationReadRepository(db);
+
   const aggregationService = new NoOpAggregationQueueService();
 
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationService);
 
+  const queryAggregatedMetricsUseCase = new QueryAggregatedMetricsUseCase(
+    aggregationReadRepository
+  );
+
+  const listActiveEndpointsUseCase = new ListActiveEndpointsUseCase(metricsRepository);
+
   const metricsController = new MetricsController(recordMetricUseCase);
 
-  const metricsRouter = Router();
-  metricsRouter.use(simulateAuthMiddleware);
-  metricsRouter.use(createMetricsRouter(metricsController));
+  const metricsQueryController = new MetricsQueryController(queryAggregatedMetricsUseCase);
 
-  return { metricsRouter };
+  const endpointsController = new EndpointsController(listActiveEndpointsUseCase);
+
+  return {
+    metricsRouter: withAuth(createMetricsRouter(metricsController, metricsQueryController)),
+    endpointsRouter: withAuth(createEndpointsRouter(endpointsController)),
+  };
 }

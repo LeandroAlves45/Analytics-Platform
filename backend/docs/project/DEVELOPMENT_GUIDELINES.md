@@ -118,9 +118,11 @@ const DEFAULT_TIMEOUT_MS = 5000;
 // Database columns: snake_case
 workspace_id, created_at, status_code
 
-// API endpoints: kebab-case
-GET /api/v1/metrics
-POST /api/v1/alert-rules
+// API endpoints: sem versão no path (MVP)
+POST /api/metrics
+GET  /api/metrics/aggregated
+GET  /api/endpoints
+POST /api/alert-rules          // planned — Sprint 5
 ```
 
 ### Comments
@@ -186,11 +188,12 @@ if (criticalSystemFailure) {
 }
 ```
 
-Error codes are machine-readable and must match `ErrorCode` union type:
+Error codes are machine-readable and must match `ErrorCode` in `src/shared/errors/ErrorCodes.ts`:
 ```typescript
-export type ErrorCode = 
+export type ErrorCode =
   | 'INTERNAL_SERVER_ERROR'
   | 'BAD_REQUEST'
+  | 'ROUTE_NOT_FOUND'      // definido; 404 de rota usa NOT_FOUND em app.ts
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
@@ -637,4 +640,19 @@ git commit -m "feat(scope): description"  # Commit
 git push origin feat/name                 # Push
 ```
 
-Last Updated: January 2025
+---
+
+## Frontend integration (Sprint 4)
+
+Contrato HTTP completo: [API_REFERENCE.md](./API_REFERENCE.md).
+
+| Tópico | Valor |
+|--------|-------|
+| API base (local) | `http://localhost:3000` |
+| Frontend origin (CORS) | `http://localhost:5173` |
+| Env backend | `CORS_ORIGIN`, `PORT` — ver `backend/.env.example` |
+| Env frontend | `VITE_API_URL=http://localhost:3000` |
+| Auth dev | Sem header → `DEV_WORKSPACE_ID` em `resolveTenantContext.ts` |
+| Polling dashboard | 10s via React Query `refetchInterval` |
+
+Last Updated: June 2026

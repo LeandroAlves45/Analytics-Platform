@@ -27,14 +27,23 @@ Before any deployment:
 ### Development
 
 **URL**: http://localhost:3000  
-**Database**: Local PostgreSQL  
-**Redis**: Local Redis  
+**Frontend**: http://localhost:5173 (`CORS_ORIGIN`)  
+**Database**: PostgreSQL via Docker — host `localhost:5433` (mapeamento `5433→5432` no container)  
+**Redis**: Local via Docker  
 **Purpose**: Local development
+
+> **Windows:** se existir PostgreSQL nativo na porta 5432, usar `DATABASE_PORT=5433` em `.env` (ver `backend/.env.example`). Sem isto, `npm run db:migrate` pode ligar à instância errada.
 
 Setup:
 ```bash
+# Na raiz do repo — só infra
+docker-compose up -d
+
+# Backend — API no host
+cd backend
+cp .env.example .env   # ajustar DATABASE_PORT=5433 se necessário
+npm run db:migrate
 npm run dev
-docker-compose up  # postgres + redis
 ```
 
 ---
@@ -99,111 +108,22 @@ Deploy to Production
 
 ## GitHub Actions Workflow
 
-### CI Pipeline (.github/workflows/ci.yml)
+### CI Pipeline (`.github/workflows/ci.yml`)
 
-```yaml
-name: CI
+Pipeline actual (Node **24**, `working-directory: backend`):
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+| Job | O que faz |
+|-----|-----------|
+| `lint` | ESLint + `npm run type-check` |
+| `test-unit` | Testes unitários + Codecov (`flags: unit`) |
+| `test-integration` | TimescaleDB service, migrations, testes integração + Codecov |
+| `sdk-lint` | Lint/type-check/build do pacote `sdk/` |
+| `sdk-test` | Testes do SDK |
+| `build` | `npm run build` + Docker image → GHCR (push só em `push` event) |
 
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run type-check
+Integração usa `DATABASE_HOST/PORT/USER/PASSWORD/NAME` (porta **5432** no runner CI — sem conflito Windows).
 
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test
-      redis:
-        image: redis:7
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npm ci
-      - run: npm run test -- --coverage
-      - uses: codecov/codecov-action@v3
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  deploy-staging:
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - name: Deploy to Staging
-        run: |
-          curl -X POST https://api.railway.app/webhooks/deploy \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{"service": "analytics-staging"}'
-      
-      - name: Run Smoke Tests
-        run: |
-          npm install -g newman
-          newman run postman_collection.json \
-            --environment staging.json
-
-  deploy-production:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    needs: [build, deploy-staging]
-    environment: production
-    steps:
-      - name: Deploy to Production
-        run: |
-          curl -X POST https://api.railway.app/webhooks/deploy \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_PROD_TOKEN }}" \
-            -d '{"service": "analytics-production"}'
-      
-      - name: Health Check
-        run: |
-          for i in {1..30}; do
-            if curl -f https://analytics.example.com/health; then
-              echo "Health check passed"
-              exit 0
-            fi
-            sleep 10
-          done
-          exit 1
-      
-      - name: Monitor Error Rate
-        run: |
-          # Check error rate in first 5 minutes
-          # If > 1%, rollback
-```
+**CD (deploy staging/production):** não implementado — previsto Sprint 7–8. Ver `.github/workflows/cd.yml` quando activo.
 
 ---
 
@@ -226,25 +146,15 @@ npm run db:test-integrity
 
 ### During Deployment
 
-Migrations run automatically:
+**Estado actual:** migrations correm manualmente ou via CI (`npm run db:migrate`). `RUN_MIGRATIONS` em `main.ts` **ainda não está implementado** — Sprint 7.
 
-```typescript
-// main.ts
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { db } from './infra/frameworks/database';
-
-async function runMigrations() {
-  console.log('Running migrations...');
-  await migrate(db, { migrationsFolder: './src/infra/frameworks/database/migrations' });
-  console.log('Migrations completed');
-}
-
-if (process.env.RUN_MIGRATIONS === 'true') {
-  await runMigrations();
-}
+Local / CI:
+```bash
+cd backend
+npm run db:migrate
 ```
 
-Deploy command:
+Deploy command (quando CD estiver activo):
 
 ```bash
 RUN_MIGRATIONS=true npm start
@@ -359,13 +269,21 @@ If issues detected post-deployment:
 
 ### Production Secrets (Railway Dashboard)
 
+A aplicação lê variáveis individuais (ver `backend/src/infra/frameworks/config.ts` e `.env.example`):
+
 ```
 NODE_ENV=production
 PORT=3000
-API_BASE_URL=https://analytics.example.com
+CORS_ORIGIN=https://app.example.com
 
-DATABASE_URL=postgresql://user:pass@host:5432/db
-REDIS_URL=redis://host:6379
+DATABASE_HOST=<host>
+DATABASE_PORT=5432
+DATABASE_NAME=analytics_db
+DATABASE_USER=analytics_user
+DATABASE_PASSWORD=<secret>
+
+REDIS_URL=redis://host:6379/0
+METRICS_CACHE_TTL_SECONDS=300
 
 JWT_SECRET=<generate-secure-key>
 JWT_EXPIRES_IN=24h
@@ -376,8 +294,9 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 SLACK_WEBHOOK_URL=https://hooks.slack.com/...
 
 LOG_LEVEL=info
-SENTRY_DSN=https://...@sentry.io/...
 ```
+
+> Alguns providers expõem `DATABASE_URL` — converter para `DATABASE_*` ou adaptar `config.ts` no Sprint 7.
 
 Never commit secrets. Use environment variables or secrets manager.
 
@@ -561,14 +480,26 @@ After successful deployment:
 
 ## Troubleshooting
 
+### `db:migrate` falha em desenvolvimento (Windows)
+
+Sintoma: `database_setup_failed` ou credenciais recusadas.
+
+Causa frequente: PostgreSQL nativo na porta **5432** + Docker na mesma porta.
+
+Fix: `docker-compose.yml` mapeia `5433:5432`; definir `DATABASE_PORT=5433` em `backend/.env`.
+
+### API não responde / curl connection refused
+
+Docker Compose **não** inicia o servidor Express. Correr `cd backend && npm run dev`.
+
 ### Health Check Fails
 
 ```bash
 # Check logs
 railway logs -f
 
-# Check database connection
-psql $DATABASE_URL -c "SELECT 1"
+# Check database connection (local)
+PGPASSWORD=analyticspass psql -h localhost -p 5433 -U analytics_user -d analytics_db -c "SELECT 1"
 
 # Check Redis connection
 redis-cli -u $REDIS_URL ping
@@ -618,4 +549,4 @@ cat drizzle/*.log
 - **DevOps**: Monitor deployment, handle issues
 - **On-Call**: Monitor production, handle alerts
 
-Last Updated: January 2025
+Last Updated: June 2026

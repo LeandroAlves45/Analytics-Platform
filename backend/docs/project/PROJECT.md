@@ -26,30 +26,35 @@ Desenvolver um SaaS de analytics que resolve o problema de observabilidade para 
    - Zero overhead (<1ms overhead por request)
 
 2. Armazenamento e agregação
-   - Raw metrics em TimescaleDB (7 dias)
-   - Agregações 5min/1h/1d
-   - Cálculo automático de percentis (p50, p95, p99)
+   - Raw metrics em TimescaleDB (retenção 7 dias — Sprint 7)
+   - Agregações 5min/1h/1d (BullMQ workers — **implementado**)
+   - Cálculo automático de percentis (p50, p75, p95, p99)
 
-3. Dashboard
-   - Gráficos de latência
-   - Distribuição de status codes
-   - Throughput (req/s)
-   - Filtros por endpoint/período
-   - Real-time updates (10s polling)
+3. Read API (backend — **implementado Junho 2026**)
+   - `GET /api/metrics/aggregated` — séries temporais para gráficos
+   - `GET /api/endpoints` — lista de endpoints activos para filtros
+   - Contrato: [API_REFERENCE.md](./API_REFERENCE.md)
 
-4. Alerting
+4. Dashboard (frontend — Sprint 4)
+   - React + Vite + TypeScript + Tailwind + shadcn/ui
+   - Recharts (latência, error rate, throughput)
+   - React Query (polling 10s) + Zustand (filtros)
+   - Axios client (`VITE_API_URL`)
+   - Filtros por endpoint/período/método
+
+5. Alerting
    - Rules baseadas em condições
    - Slack webhook integration
    - Email notifications
    - History de triggers
 
-5. Billing
+6. Billing
    - Stripe integration
    - Pricing por requests rastreados
    - Usage tracking
    - Multi-tier plans (free, pro, enterprise)
 
-6. Autenticação
+7. Autenticação
    - JWT-based
    - Multi-tenant isolation
    - API key management
@@ -250,14 +255,19 @@ Total: ~4 months para MVP
 
 This project uses the following documentation:
 
-- `PROJECT.md`: Project overview (this file)
-- `ARCHITECTURE.md`: Technical architecture details
-- `SPRINTS.md`: Sprint planning and milestones
-- `DEVELOPMENT_GUIDELINES.md`: Day-to-day development standards
-- `DATABASE_SCHEMA.md`: Complete database schema
-- `API_REFERENCE.md`: API endpoints and contracts
-- `DEPLOYMENT.md`: Deploy procedures and environments
-- `TROUBLESHOOTING.md`: Common issues and solutions
-- `DEPENDENCIES.md`: Why each library was chosen
+| Ficheiro | Descrição |
+|----------|-----------|
+| [PROJECT.md](./PROJECT.md) | Visão geral (este ficheiro) |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Clean Architecture, camadas, bootstrap |
+| [SPRINTS.md](./SPRINTS.md) | Planeamento e milestones |
+| [DEVELOPMENT_GUIDELINES.md](./DEVELOPMENT_GUIDELINES.md) | Padrões de código e integração frontend |
+| [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Schema PostgreSQL / TimescaleDB |
+| [API_REFERENCE.md](./API_REFERENCE.md) | **Contrato HTTP para o dashboard** |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Ambientes, CI, deploy, troubleshooting local |
 
-Last Updated: January 2025
+Planned (pós-MVP / Sprint 7):
+
+- `TROUBLESHOOTING.md` — notas críticas já em DEPLOYMENT.md (porta 5433, migrate)
+- `DEPENDENCIES.md` — rationale de bibliotecas
+
+Last Updated: June 2026

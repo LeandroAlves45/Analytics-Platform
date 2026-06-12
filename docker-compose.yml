@@ -20,9 +20,9 @@ services:
       - POSTGRES_PASSWORD=analyticspass
       - POSTGRES_DB=analytics_db
 
-    # Mapeamento de portas: porta_do_host:porta_do_container
+    # Porta 5433 no host evita conflito com PostgreSQL local (Windows) em 5432.
     ports:
-      - '5432:5432'
+      - '5433:5432'
 
     # Volume persistente: os dados da base de dados não se perdem
     volumes:

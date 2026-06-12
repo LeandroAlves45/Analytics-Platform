@@ -2,7 +2,11 @@
 
 ## Complete Analytics SaaS Database Schema
 
-Total: 12 tables (3 hypertables time-series, 9 relational)
+Total: 14 tables (4 hypertables time-series, 10 relational)
+
+Hypertables: `metrics_raw`, `metrics_5min`, `metrics_1h`, `metrics_1d`.
+
+A Read API (`GET /api/metrics/aggregated`) consulta `metrics_5min` / `metrics_1h` / `metrics_1d` conforme o parâmetro `interval` (`5m` | `1h` | `1d`).
 
 ---
 
@@ -10,7 +14,7 @@ Total: 12 tables (3 hypertables time-series, 9 relational)
 
 ### metrics_raw (Hypertable)
 
-Raw metrics ingested from SDKs. 7-day retention.
+Raw metrics ingested from SDKs. Retenção planeada: 7 dias (Sprint 7).
 
 ```sql
 CREATE TABLE metrics_raw (
@@ -49,13 +53,13 @@ CREATE INDEX ON metrics_raw (status_code, time DESC);
 (`time`) to be included in any UNIQUE constraint on a hypertable. This means `request_id` alone
 is **not** a deduplication key here; `metric_idempotency_keys` fulfils that role.
 
-**Retention**: Automatic delete after 7 days
+**Retention**: 7 days (política TimescaleDB — **Sprint 7**, ainda não activa)
 
 ---
 
 ### metrics_5min (Hypertable)
 
-5-minute aggregations. 90-day retention.
+5-minute aggregations. Retenção planeada: 90 dias (Sprint 7). **Read API:** `interval=5m`.
 
 ```sql
 CREATE TABLE metrics_5min (
@@ -102,7 +106,7 @@ CREATE UNIQUE INDEX metrics_5min_unique_window_idx
 
 ### metrics_1h (Hypertable)
 
-1-hour aggregations. 1-year retention.
+1-hour aggregations. Retenção planeada: 1 ano (Sprint 7). **Read API:** `interval=1h`.
 
 ```sql
 CREATE TABLE metrics_1h (
@@ -142,7 +146,7 @@ CREATE UNIQUE INDEX metrics_1h_unique_window_idx
 
 ### metrics_1d (Hypertable)
 
-1-day aggregations. Infinite retention.
+1-day aggregations. Retenção planeada: infinita. **Read API:** `interval=1d`.
 
 ```sql
 CREATE TABLE metrics_1d (
@@ -557,9 +561,11 @@ LIMIT 1;
 
 ## Retention Policy
 
-| Table | Retention | Action |
-|-------|-----------|--------|
-| metrics_raw | 7 days | Auto-delete (TimescaleDB) |
+> **Estado actual (Junho 2026):** políticas de retenção **não estão activas** — dados persistem até implementação no Sprint 7 (`add_retention_policy` / jobs de cleanup).
+
+| Table | Retention (planeado) | Action (Sprint 7) |
+|-------|----------------------|-------------------|
+| metrics_raw | 7 days | `add_retention_policy` (TimescaleDB) |
 | metric_idempotency_keys | ≥ 7 days | Manual cleanup job (align with metrics_raw) |
 | metrics_5min | 90 days | Manual cleanup job |
 | metrics_1h | 1 year | Manual cleanup job |

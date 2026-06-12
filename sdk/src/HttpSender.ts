@@ -191,7 +191,7 @@ export class HttpSender {
    * Adicionamos jitter (variação aleatória de ±10%) para evitar que
    * múltiplos clientes tentem em simultâneo após uma falha global.
    *
-   * @param attempt - Número da tentativa actual (começa em 1).
+   * @param attempt - Número da tentativa atual (começa em 1).
    * @returns Delay em milissegundos.
    */
   private calculateBackoffDelay(attempt: number): number {

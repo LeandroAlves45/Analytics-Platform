@@ -211,6 +211,11 @@ Estrutura: Daily standups (15min), sprint planning (4h), sprint review (2h), ret
 - Data aggregation (5min, 1h, 1d)
 - Dead letter queue handling
 - Integration tests
+- **Read API** (pré-requisito Sprint 4 — concluído Junho 2026):
+  - `GET /api/metrics/aggregated`
+  - `GET /api/endpoints`
+  - CORS + OPTIONS preflight para `http://localhost:5173`
+  - Ver [API_REFERENCE.md](./API_REFERENCE.md)
 
 ### Technical Tasks
 
@@ -271,6 +276,18 @@ Estrutura: Daily standups (15min), sprint planning (4h), sprint review (2h), ret
 **Duration**: Weeks 7-8  
 **Goal**: React dashboard with real-time charts
 
+### Pré-requisitos backend — DONE
+
+O backend expõe a Read API documentada em [API_REFERENCE.md](./API_REFERENCE.md):
+
+| Endpoint | Uso no dashboard |
+|----------|------------------|
+| `GET /api/metrics/aggregated` | Gráficos latência, error rate, throughput |
+| `GET /api/endpoints` | Filtros endpoint/método |
+| `GET /health` / `GET /ready` | Status (opcional) |
+
+Auth em dev: workspace stub sem JWT. Polling recomendado: **10s** (React Query).
+
 ### Deliverables
 
 - React + Vite + TypeScript setup
@@ -293,10 +310,10 @@ Estrutura: Daily standups (15min), sprint planning (4h), sprint review (2h), ret
 - [ ] Estimated: 8h
 
 #### API Client (1 day)
-- [ ] Axios setup
-- [ ] API endpoints mapping
-- [ ] Error handling
-- [ ] Request/response types
+- [ ] Axios setup (`VITE_API_URL=http://localhost:3000`)
+- [ ] Hooks para `GET /api/metrics/aggregated` e `GET /api/endpoints` (ver API_REFERENCE.md)
+- [ ] Error handling (`error.code`, `error.details`)
+- [ ] Request/response types (espelhar MetricsQueryDTO)
 - [ ] Estimated: 8h
 
 #### React Query Setup (1 day)
@@ -648,4 +665,4 @@ Each sprint should track:
 | 7 | Coverage | >80% |
 | 8 | Uptime | 99.5% |
 
-Last Updated: June 2026 (Sprint 3 marked complete)
+Last Updated: June 2026 (Sprint 3 complete + Read API; Sprint 4 frontend in progress)

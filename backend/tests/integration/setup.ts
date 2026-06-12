@@ -73,15 +73,20 @@ beforeAll(async () => {
   logger.info('integration_test_setup_complete');
 }, 30000);
 
-// Limpar tabelas antes de cada teste para garantir isolamento total.
-// beforeEach em vez de afterEach: se um teste falhar a meio, as tabelas
-// ficam sujas mas o próximo teste começa sempre com estado limpo.
+/**
+ * Limpar tabelas antes de cada teste para garantir isolamento total.
+ *beforeEach em vez de afterEach: se um teste falhar a meio, as tabelas
+ *ficam sujas mas o próximo teste começa sempre com estado limpo.
+ */
 beforeEach(async () => {
   const db = getDatabase();
 
   // TRUNCATE CASCADE garante que foreign keys não bloqueiam a limpeza.
   await db.execute(sql`TRUNCATE TABLE metrics_raw RESTART IDENTITY CASCADE`);
   await db.execute(sql`TRUNCATE TABLE metric_idempotency_keys RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE metrics_5min RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE metrics_1h RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE metrics_1d RESTART IDENTITY CASCADE`);
 });
 
 // Fechar conexão á BD após todos os testes

@@ -3,7 +3,7 @@
 # Pipeline de Entrega Contínua (CD).
 # Gere os deploys para staging e produção.
 #
-# ESTADO ACTUAL:
+# ESTADO ATUAL:
 # Os jobs de deploy estão estruturados mas com os steps reais comentados.
 # Serão activados nos Sprints 7-8 quando tivermos infraestrutura configurada.
 #
