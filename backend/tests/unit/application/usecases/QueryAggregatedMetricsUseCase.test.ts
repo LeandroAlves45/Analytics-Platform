@@ -73,4 +73,53 @@ describe('QueryAggregatedMetricsUseCase', () => {
     // 100 requests / 300 seconds (5min window)
     expect(result.series[0].throughputPerSec).toBeCloseTo(100 / 300, 5);
   });
+
+  it('should normalize null fields to zero and return zero errorRate for empty buckets', async () => {
+    mockReadRepository.findAggregatedMetrics.mockResolvedValue([
+      {
+        time: new Date('2026-06-01T10:00:00.000Z'),
+        endpoint: 'GET /api/health',
+        method: 'GET',
+        count: 0,
+        latencyP50: null,
+        latencyP75: null,
+        latencyP95: null,
+        latencyP99: null,
+        latencyAvg: null,
+        latencyMin: null,
+        latencyMax: null,
+        status2xxCount: null,
+        status3xxCount: null,
+        status4xxCount: null,
+        status5xxCount: null,
+      },
+    ]);
+
+    const result = await useCase.execute({
+      workspaceId: TEST_WORKSPACE_ID,
+      from: FROM,
+      to: TO,
+      interval: '5m',
+    });
+
+    expect(result.series[0]).toEqual({
+      time: new Date('2026-06-01T10:00:00.000Z'),
+      endpoint: 'GET /api/health',
+      method: 'GET',
+      count: 0,
+      latencyP50: 0,
+      latencyP75: 0,
+      latencyP95: 0,
+      latencyP99: 0,
+      latencyAvg: 0,
+      latencyMin: 0,
+      latencyMax: 0,
+      status2xxCount: 0,
+      status3xxCount: 0,
+      status4xxCount: 0,
+      status5xxCount: 0,
+      errorRate: 0,
+      throughputPerSec: 0,
+    });
+  });
 });
