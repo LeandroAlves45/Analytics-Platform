@@ -53,8 +53,8 @@ backend/.claude/settings.local.json.example
 backend/.claude/settings.json
 
 # Documentation
-backend/docs/sprints_concluidos/*
-backend/docs/adjust_tests/*
-backend/docs/adjust_code/*
+docs/sprints_concluidos/*
+docs/adjust_tests/*
+docs/adjust_code/*
 backend/code_review_agent.ts
 

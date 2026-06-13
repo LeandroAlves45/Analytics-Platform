@@ -1,6 +1,7 @@
 {
-  "name": "analytics-saas-backend",
+  "name": "analytics-platform-backend",
   "version": "1.0.0",
+  "private": true,
   "description": "Real-time analytics platform for APIs developers",
   "main": "dist/main.js",
   "type": "commonjs",

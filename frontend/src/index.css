@@ -1,0 +1,161 @@
+/* Importação das directivas do Tailwind CSS */
+/* @tailwind base — reset de estilos e defaults do browser */
+/* @tailwind components — classes de componentes (usadas pelo shadcn/ui) */
+/* @tailwind utilities — todas as classes utilitárias geradas */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================================
+   CSS VARIABLES — Design System do Analytics Platform
+   Estas variáveis são usadas pelo shadcn/ui e por componentes custom.
+   ===================================================================== */
+@layer base {
+  :root {
+    /* Backgrounds — hierarquia de superfícies */
+    --bg-app: #0f0f13;
+    --bg-card: #141419;
+    --bg-card-hover: #18181f;
+    --bg-sidebar: #0c0c10;
+
+    /* Borders */
+    --border-default: rgba(255, 255, 255, 0.07);
+    --border-subtle: rgba(255, 255, 255, 0.04);
+
+    /* Cores de marca (extraídas do logo) */
+    --color-purple: #9b7fe8;
+    --color-purple-d: #7055cc;
+    --color-blue: #5bbcf7;
+    --color-blue-d: #3a9fd8;
+    --color-orange: #f97a4a;
+    --color-orange-d: #d45d30;
+
+    /* Cores semânticas */
+    --color-success: #3dd68c;
+    --color-danger: #ff6464;
+
+    /* Texto — 4 níveis de hierarquia */
+    --text-primary: #e8e6f0;
+    --text-secondary: #8b8899;
+    --text-muted: #5a576a;
+    --text-disabled: #4a4760;
+
+    /* Gradiente de marca — usado no logo e em acentos */
+    --gradient-brand: linear-gradient(90deg, #9b7fe8 0%, #5bbcf7 50%, #f97a4a 100%);
+
+    /* ---------------------------------------------------------------
+       Variáveis requeridas pelo shadcn/ui (formato HSL)
+       O shadcn/ui usa estas variáveis internamente para os seus
+       componentes. Mapeamos para os nossos tokens de cor.
+       --------------------------------------------------------------- */
+    --background: 222 20% 7%; /* aproxima #0f0f13 */
+    --foreground: 240 10% 90%; /* aproxima #e8e6f0 */
+    --card: 240 14% 10%; /* aproxima #141419 */
+    --card-foreground: 240 10% 90%;
+    --popover: 240 14% 10%;
+    --popover-foreground: 240 10% 90%;
+    --primary: 255 70% 70%; /* aproxima #9b7fe8 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 14% 12%;
+    --secondary-foreground: 240 10% 80%;
+    --muted: 240 10% 20%;
+    --muted-foreground: 240 5% 55%; /* aproxima #8b8899 */
+    --accent: 240 14% 15%;
+    --accent-foreground: 240 10% 90%;
+    --destructive: 0 72% 70%; /* aproxima #ff6464 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 10% 14%; /* aproxima rgba(255,255,255,0.07) */
+    --input: 240 10% 14%;
+    --ring: 255 70% 70%;
+    --radius: 0.5rem;
+  }
+
+  /* Reset base — garante consistência entre browsers */
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    /* Scroll suave para navegação interna */
+    scroll-behavior: smooth;
+  }
+
+  body {
+    /* Fundo e cor de texto base da aplicação */
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+
+    /* DM Sans como fonte principal da UI */
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+
+    /* Renderização de fontes optimizada para ecrãs de alta resolução */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Todos os valores numéricos usam DM Mono — regra do design system */
+  /* Esta classe é aplicada explicitamente nos componentes de dados */
+  .font-data {
+    font-family: 'DM Mono', monospace;
+  }
+}
+
+/* =====================================================================
+   UTILITÁRIOS CUSTOM
+   Classes que o Tailwind não gera mas que usamos frequentemente
+   ===================================================================== */
+@layer utilities {
+  /* Gradiente de marca aplicado a texto */
+  /* Uso: <span className="text-gradient">ANALYTICS</span> */
+  .text-gradient {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Accent line no topo dos KPI cards */
+  /* Pseudo-elemento ::before gerado via CSS */
+  .accent-line-purple::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #9b7fe8, transparent);
+  }
+
+  .accent-line-blue::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #5bbcf7, transparent);
+  }
+
+  .accent-line-orange::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #f97a4a, transparent);
+  }
+
+  .accent-line-green::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #3dd68c, transparent);
+  }
+}
