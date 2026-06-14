@@ -9,8 +9,9 @@
  * - Estados: isLoading, isFetching, isError, data — prontos a usar
  *
  * O queryKey é o identificador do cache. Quando qualquer valor muda
- * (interval, from, to, endpoint, method), o React Query considera
+ * (interval, from, endpoint, method), o React Query considera
  * que é um pedido diferente e faz um novo fetch.
+ * O "to" não entra no queryKey — é sempre "agora" no fetch, via polling.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -27,24 +28,19 @@ export function useAggregatedMetrics() {
   // Lê os filtros do store Zustand
   // Quando qualquer filtro muda, este componente re-renderiza,
   // o queryKey muda, e o React Query faz um novo pedido
-  const { interval, from, to, selectedEndpoint, selectedMethod, refreshTo } = useDashboardStore();
+  const { interval, from, selectedEndpoint, selectedMethod } = useDashboardStore();
 
   return useQuery<AggregatedMetricsResponse, Error>({
-    queryKey: [AGGREGATED_METRICS_KEY, interval, from, to, selectedEndpoint, selectedMethod],
+    queryKey: [AGGREGATED_METRICS_KEY, interval, from, selectedEndpoint, selectedMethod],
 
-    // queryFn: a função que faz o pedido ao backend
-    queryFn: async () => {
-      // Atualiza o "to" para o momento atual antes de fazer o pedido
-      refreshTo();
-
-      return fetchAggregatedMetrics({
+    queryFn: () =>
+      fetchAggregatedMetrics({
         interval,
         from,
         to: new Date().toISOString(),
         endpoints: selectedEndpoint,
         method: selectedMethod,
-      });
-    },
+      }),
 
     // Polling: refaz o pedido a cada 10 segundos.
     refetchInterval: 10_000,

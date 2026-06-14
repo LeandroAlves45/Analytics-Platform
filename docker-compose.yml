@@ -49,9 +49,9 @@ services:
     image: redis:7-alpine
     container_name: analytics-saas-redis
 
-    # Porta padrão do Redis
+    # Porta 6380 no host evita conflito com Redis local (Windows) em 6379.
     ports:
-      - '6379:6379'
+      - '6380:6379'
 
     # Volume persistente: os dados do Redis não se perdem
     volumes:

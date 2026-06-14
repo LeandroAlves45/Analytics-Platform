@@ -1,0 +1,19 @@
+# Protected files — Cursor cannot read or index these
+.env
+.env.*
+.env.local
+.env.production
+.env.staging
+.env.test
+
+# Private keys and certificates
+**/*.pem
+**/*.key
+**/secrets/**
+
+# Stripe and payment secrets
+stripe_keys.txt
+
+# OS and editor artifacts
+.DS_Store
+Thumbs.db
