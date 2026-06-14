@@ -60,7 +60,7 @@ export function formatAxisTime(isoTime: string, interval: '5m' | '1h' | '1d'): s
   const date = new Date(isoTime);
 
   if (interval === '1d') {
-    // Dia do ,ês + nome do mês abreviado
+    // Dia do mês + nome do mês abreviado
     return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   }
 
@@ -83,7 +83,7 @@ export function formatLastUpdated(date: Date): string {
   return `${minutes}m ago`;
 }
 
-/**~
+/**
  * Divide a latência em valor e unidade para display em separado no KPI card
  * P95 Latency: "118" + "ms" ou "1.02" + "s"
  */

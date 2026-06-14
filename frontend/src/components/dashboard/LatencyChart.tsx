@@ -11,6 +11,7 @@
  * pelo que é necessário calcular médias ponderadas antes de plotar.
  */
 
+import { useMemo } from 'react';
 import {
   AreaChart,
   Area,
@@ -25,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAggregatedMetrics } from '@/hooks/useAggregatedMetrics';
 import { useDashboardStore } from '@/stores/dashboardStore';
 import { formatAxisTime } from '@/lib/formatters';
+import { QueryErrorPanel } from './QueryErrorPanel';
 import type { AggregatedMetricPoint, AggregationInterval } from '@/types/metrics';
 
 /**
@@ -160,10 +162,13 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 }
 
 export function LatencyChart() {
-  const { data, isLoading } = useAggregatedMetrics();
+  const { data, isLoading, isError, error, refetch } = useAggregatedMetrics();
   const { interval } = useDashboardStore();
 
-  const chartData = data?.series ? buildChartData(data.series) : [];
+  const chartData = useMemo(
+    () => (data?.series ? buildChartData(data.series) : []),
+    [data?.series]
+  );
   const hasData = chartData.length > 0;
 
   return (
@@ -181,18 +186,25 @@ export function LatencyChart() {
       </CardHeader>
 
       <CardContent className="px-2 pb-3 pt-3">
-        {isLoading && (
+        {isError && (
+          <QueryErrorPanel
+            message={error?.message ?? 'Erro ao carregar latência'}
+            onRetry={() => void refetch()}
+          />
+        )}
+
+        {!isError && isLoading && (
           // Skeleton apenas no primeiro fetch — polling não mostra skeleton
           <div className="h-[160px] rounded bg-surface-card-hover animate-pulse" aria-hidden />
         )}
 
-        {!isLoading && !hasData && (
+        {!isError && !isLoading && !hasData && (
           <div className="h-[160px] flex items-center justify-center">
             <p className="text-xs text-meta">Sem dados no período seleccionado</p>
           </div>
         )}
 
-        {!isLoading && hasData && (
+        {!isError && !isLoading && hasData && (
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
               <defs>

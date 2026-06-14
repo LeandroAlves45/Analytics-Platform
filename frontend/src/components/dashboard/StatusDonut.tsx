@@ -8,9 +8,11 @@
  * mais relevante para uma vista rápida de saúde do sistema.
  */
 
+import { useMemo } from 'react';
 import { PieChart, Pie, Cell, Label, Tooltip, type TooltipProps } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAggregatedMetrics } from '@/hooks/useAggregatedMetrics';
+import { QueryErrorPanel } from './QueryErrorPanel';
 import type { AggregatedMetricPoint } from '@/types/metrics';
 
 const STATUS_COLORS = {
@@ -73,12 +75,13 @@ function DonutTooltip({ active, payload }: TooltipProps<number, string>) {
 }
 
 export function StatusDonut() {
-  const { data, isLoading } = useAggregatedMetrics();
+  const { data, isLoading, isError, error, refetch } = useAggregatedMetrics();
 
-  // Segmentos sempre presentes para a legenda ser consistente
-  const allSegments = data?.series ? buildStatusData(data.series) : buildStatusData([]);
+  const allSegments = useMemo(
+    () => (data?.series ? buildStatusData(data.series) : buildStatusData([])),
+    [data?.series]
+  );
 
-  // Para o gráfico donut,  filtramos os segmentos com value: 0
   const hasData = (data?.series?.length ?? 0) > 0;
   const donutData = hasData
     ? allSegments.filter((s) => s.value > 0)
@@ -95,9 +98,18 @@ export function StatusDonut() {
       </CardHeader>
 
       <CardContent className="px-[14px] pb-[14px] pt-3">
-        {isLoading ? (
+        {isError && (
+          <QueryErrorPanel
+            message={error?.message ?? 'Erro ao carregar distribuição de status'}
+            onRetry={() => void refetch()}
+          />
+        )}
+
+        {!isError && isLoading && (
           <div className="h-[140px] rounded bg-surface-card-hover animate-pulse" aria-hidden />
-        ) : (
+        )}
+
+        {!isError && !isLoading && (
           // Layout flex: donut à esquerda, legenda à direita
           <div className="flex items-center justify-center gap-5 h-[140px]">
             {/* Donut com dimensões fixas — PieChart exige width/height explícitos */}

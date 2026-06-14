@@ -1,9 +1,6 @@
 /**
- * Gráfico de throughput (req/s) ao longo do tempo.
- * Série única com fill gradiente azul — sem legenda (é a única série).
- *
- * O throughput por janela é a soma de throughputPerSec de todos os endpoints
- * ativos nessa janela. Representa o volume total de tráfego no sistema.
+ * Gráfico de error rate (%) ao longo do tempo.
+ * Agrega 4xx+5xx / count por janela temporal.
  */
 
 import { useMemo } from 'react';
@@ -20,43 +17,47 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAggregatedMetrics } from '@/hooks/useAggregatedMetrics';
 import { useDashboardStore } from '@/stores/dashboardStore';
-import { formatAxisTime, formatThroughput } from '@/lib/formatters';
+import { formatAxisTime, formatErrorRate } from '@/lib/formatters';
 import { QueryErrorPanel } from './QueryErrorPanel';
-import type { AggregatedMetricPoint, AggregationInterval } from '@/types/metrics';
+import type { AggregatedMetricPoint } from '@/types/metrics';
 
-// Cor da série
-const THROUGHPUT_COLOR = '#5bbcf7';
+const ERROR_RATE_COLOR = '#f97a4a';
 
-interface ThroughputPoint {
+interface ErrorRatePoint {
   time: string;
-  rps: number; // req/s total da janela
+  rate: number;
 }
 
-/**
- * Agrega o throughput de todos os endpoints por janela temporal.
- * A soma representa o volume total de tráfego no sistema naquele momento.
- */
-function buildChartData(series: AggregatedMetricPoint[]): ThroughputPoint[] {
-  const byTime = new Map<string, number>();
+function buildChartData(series: AggregatedMetricPoint[]): ErrorRatePoint[] {
+  const byTime = new Map<string, AggregatedMetricPoint[]>();
+
   for (const point of series) {
-    byTime.set(point.time, (byTime.get(point.time) ?? 0) + point.throughputPerSec);
+    const arr = byTime.get(point.time) ?? [];
+    arr.push(point);
+    byTime.set(point.time, arr);
   }
 
-  return (
-    Array.from(byTime.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      // Arredonda a 2 casas decimais para evitar precisão excessiva no tooltip
-      .map(([time, rps]) => ({ time, rps: Math.round(rps * 100) / 100 }))
-  );
+  return Array.from(byTime.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([time, points]) => {
+      const total = points.reduce((sum, point) => sum + point.count, 0);
+      const errors = points.reduce(
+        (sum, point) => sum + point.status4xxCount + point.status5xxCount,
+        0
+      );
+      const rate = total > 0 ? errors / total : 0;
+      return { time, rate: Math.round(rate * 1000) / 10 };
+    });
 }
 
-/**
- * Tooltip customizado para throughput
- */
-function ThroughputTooltip({ active, payload, label, interval }: ThroughputTooltipProps) {
+interface ErrorRateTooltipProps extends TooltipProps<number, string> {
+  interval: '5m' | '1h' | '1d';
+}
+
+function ErrorRateTooltip({ active, payload, label, interval }: ErrorRateTooltipProps) {
   if (!active || !payload?.length) return null;
 
-  const rps = typeof payload[0]?.value === 'number' ? payload[0].value : 0;
+  const rate = typeof payload[0]?.value === 'number' ? payload[0].value / 100 : 0;
 
   return (
     <div
@@ -79,22 +80,18 @@ function ThroughputTooltip({ active, payload, label, interval }: ThroughputToolt
       </p>
       <span
         style={{
-          color: THROUGHPUT_COLOR,
+          color: ERROR_RATE_COLOR,
           fontFamily: 'DM Mono, monospace',
           fontSize: '11px',
         }}
       >
-        {formatThroughput(rps)}
+        {formatErrorRate(rate)}
       </span>
     </div>
   );
 }
 
-interface ThroughputTooltipProps extends TooltipProps<number, string> {
-  interval: AggregationInterval;
-}
-
-export function ThroughputChart() {
+export function ErrorRateChart() {
   const { data, isLoading, isError, error, refetch } = useAggregatedMetrics();
   const { interval } = useDashboardStore();
 
@@ -107,13 +104,13 @@ export function ThroughputChart() {
   return (
     <Card>
       <CardHeader className="px-[14px] pt-[14px] pb-0">
-        <CardTitle>Throughput (req/s)</CardTitle>
+        <CardTitle>Error rate over time</CardTitle>
       </CardHeader>
 
       <CardContent className="px-2 pb-3 pt-3">
         {isError && (
           <QueryErrorPanel
-            message={error?.message ?? 'Erro ao carregar throughput'}
+            message={error?.message ?? 'Erro ao carregar error rate'}
             onRetry={() => void refetch()}
           />
         )}
@@ -132,10 +129,9 @@ export function ThroughputChart() {
           <ResponsiveContainer width="100%" height={120}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
               <defs>
-                {/* Gradiente de fill azul com fade para transparente */}
-                <linearGradient id="grad-throughput" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={THROUGHPUT_COLOR} stopOpacity={0.2} />
-                  <stop offset="95%" stopColor={THROUGHPUT_COLOR} stopOpacity={0} />
+                <linearGradient id="grad-error-rate" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={ERROR_RATE_COLOR} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={ERROR_RATE_COLOR} stopOpacity={0} />
                 </linearGradient>
               </defs>
 
@@ -154,14 +150,14 @@ export function ThroughputChart() {
                 tick={{ fill: '#5a576a', fontSize: 10, fontFamily: 'DM Mono, monospace' }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v: number) => formatThroughput(v)}
-                width={46}
-                domain={['auto', 'auto']}
+                tickFormatter={(v: number) => `${v}%`}
+                width={40}
+                domain={[0, 'auto']}
               />
 
               <Tooltip
                 content={(props) => (
-                  <ThroughputTooltip
+                  <ErrorRateTooltip
                     {...(props as TooltipProps<number, string>)}
                     interval={interval}
                   />
@@ -171,13 +167,13 @@ export function ThroughputChart() {
 
               <Area
                 type="monotone"
-                dataKey="rps"
-                name="Throughput"
-                stroke={THROUGHPUT_COLOR}
+                dataKey="rate"
+                name="Error rate"
+                stroke={ERROR_RATE_COLOR}
                 strokeWidth={1.5}
-                fill="url(#grad-throughput)"
+                fill="url(#grad-error-rate)"
                 dot={false}
-                activeDot={{ r: 3, fill: THROUGHPUT_COLOR, strokeWidth: 0 }}
+                activeDot={{ r: 3, fill: ERROR_RATE_COLOR, strokeWidth: 0 }}
               />
             </AreaChart>
           </ResponsiveContainer>

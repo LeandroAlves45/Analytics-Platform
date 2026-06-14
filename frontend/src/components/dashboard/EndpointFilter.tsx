@@ -13,6 +13,7 @@
  * disponíveis não deve mudar ao trocar o intervalo de 5m para 1h.
  */
 
+import { useEffect, useMemo } from 'react';
 import {
   Select,
   SelectContent,
@@ -47,11 +48,20 @@ export function EndpointFilter() {
 
   // Paths únicos ordenados alfabeticamente.
   // Deduplicados porque o mesmo path pode ter múltiplos métodos na lista.
-  const uniquePaths: string[] = endpointsData?.endpoints
-    ? [...new Set(endpointsData.endpoints.map((e) => e.endpoint))].sort()
-    : [];
+  const uniquePaths = useMemo(
+    () =>
+      endpointsData?.endpoints
+        ? [...new Set(endpointsData.endpoints.map((e) => e.endpoint))].sort()
+        : [],
+    [endpointsData?.endpoints]
+  );
 
-  // Método ativo visualmente -> undefined no store equivale a 'ALL'.
+  useEffect(() => {
+    if (selectedEndpoint && uniquePaths.length > 0 && !uniquePaths.includes(selectedEndpoint)) {
+      setEndpoint(undefined);
+    }
+  }, [selectedEndpoint, uniquePaths, setEndpoint]);
+
   const activeMethod: MethodOption = (selectedMethod as MethodOption | undefined) ?? 'ALL';
 
   // Radix Select exige que `value` corresponda a um SelectItem existente.

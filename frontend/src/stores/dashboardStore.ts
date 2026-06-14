@@ -11,27 +11,8 @@
  */
 
 import { create } from 'zustand';
+import { computeMetricsWindow } from '@/lib/metrics-window';
 import type { AggregationInterval } from '@/types/metrics';
-
-/**
- * Calcula o timestamp "from" a partir do intervalo e da janela de tempo.
- * Esta função é usada para inicializar o store e para o botão "Last 24h".
- */
-function computeFrom(interval: AggregationInterval): string {
-  const now = new Date();
-
-  // Cada intervalo tem uma janela de visualização recomendada:
-  // 5m -> última hora (12 pontos de 5 min)
-  // 1h -> últimas 24 horas (24 pontos de 1h)
-  // 1d -> últimos 30 dias (30 pontos de 1d)
-  const windowMs: Record<AggregationInterval, number> = {
-    '5m': 60 * 60 * 1000,
-    '1h': 24 * 60 * 60 * 1000,
-    '1d': 30 * 24 * 60 * 60 * 1000,
-  };
-
-  return new Date(now.getTime() - windowMs[interval]).toISOString();
-}
 
 // Estrutura do estado do store
 interface DashboardState {
@@ -50,32 +31,30 @@ interface DashboardState {
   setMethod: (method: string | undefined) => void;
   setDateRange: (from: string, to: string) => void;
 
-  // Atualiza o campo "to" para "agora" -> chamado pelo polling
-  // O React Query atualiza os dados, mas o "to" tem que avançar
-  // para que o backend não retorne sempre a mesma janela
-  refreshTo: () => void;
-
   // Repõe todos os filtros para os valores default
   reset: () => void;
 }
 
 // Estado inicial -> intervalo 1h, janela das últimas 24 horas, sem filtros de endpoint
 const DEFAULT_INTERVAL: AggregationInterval = '1h';
+const initialWindow = computeMetricsWindow(DEFAULT_INTERVAL);
 
 export const useDashboardStore = create<DashboardState>((set) => ({
   interval: DEFAULT_INTERVAL,
-  from: computeFrom(DEFAULT_INTERVAL),
-  to: new Date().toISOString(),
+  from: initialWindow.from,
+  to: initialWindow.to,
   selectedEndpoint: undefined,
   selectedMethod: undefined,
 
   // Quando o intervalo muda, atualiza o "from"
-  setInterval: (interval) =>
+  setInterval: (interval) => {
+    const window = computeMetricsWindow(interval);
     set({
       interval,
-      from: computeFrom(interval),
-      to: new Date().toISOString(),
-    }),
+      from: window.from,
+      to: window.to,
+    });
+  },
 
   // Filtro de endpoint -> undefined limpa o filtro (mostra todos os endpoints)
   setEndpoint: (endpoint) => set({ selectedEndpoint: endpoint }),
@@ -86,16 +65,14 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   // Range de datas manual -> para um date range picker no futuro
   setDateRange: (from, to) => set({ from, to }),
 
-  // Avança o "to" para o momento actual -> chamado pelo polling
-  refreshTo: () => set({ to: new Date().toISOString() }),
-
-  // Reset completo -> volta ao estado inicial
-  reset: () =>
+  reset: () => {
+    const window = computeMetricsWindow(DEFAULT_INTERVAL);
     set({
       interval: DEFAULT_INTERVAL,
-      from: computeFrom(DEFAULT_INTERVAL),
-      to: new Date().toISOString(),
+      from: window.from,
+      to: window.to,
       selectedEndpoint: undefined,
       selectedMethod: undefined,
-    }),
+    });
+  },
 }));

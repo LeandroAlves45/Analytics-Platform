@@ -10,11 +10,12 @@
  * ver rapidamente o que está a causar degradação de performance.
  */
 
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useAggregatedMetrics } from '@/hooks/useAggregatedMetrics';
 import { Badge } from '@/components/ui/badge';
 import { formatLatency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import { QueryErrorPanel } from './QueryErrorPanel';
 import type { AggregatedMetricPoint } from '@/types/metrics';
 
 /**
@@ -117,10 +118,9 @@ function getBarFillStyle(p95: number, maxP95: number): CSSProperties {
  * Componente principal
  */
 export function EndpointsTable() {
-  const { data, isLoading } = useAggregatedMetrics();
+  const { data, isLoading, isError, error, refetch } = useAggregatedMetrics();
 
-  const rows = data?.series ? buildEndpointRows(data.series) : [];
-  // rows[0].p95 é o máximo porque a lista está ordenada por P95 desc
+  const rows = useMemo(() => (data?.series ? buildEndpointRows(data.series) : []), [data?.series]);
   const maxP95 = rows.length > 0 ? rows[0].p95 : 0;
   const hasData = rows.length > 0;
 
@@ -132,8 +132,14 @@ export function EndpointsTable() {
         {hasData && <Badge variant="count">{rows.length} active</Badge>}
       </div>
 
-      {/* ── Skeleton de primeiro carregamento ── */}
-      {isLoading && (
+      {isError && (
+        <QueryErrorPanel
+          message={error?.message ?? 'Erro ao carregar endpoints'}
+          onRetry={() => void refetch()}
+        />
+      )}
+
+      {!isError && isLoading && (
         <div className="flex flex-col gap-3" aria-hidden="true">
           {[44, 56, 32, 68].map((w) => (
             <div key={w} className="flex items-center gap-2">
@@ -150,14 +156,14 @@ export function EndpointsTable() {
       )}
 
       {/* ── Estado sem dados ── */}
-      {!isLoading && !hasData && (
+      {!isError && !isLoading && !hasData && (
         <div className="flex items-center justify-center h-24">
           <p className="text-xs text-meta">Sem endpoints no período seleccionado</p>
         </div>
       )}
 
       {/* ── Linhas da tabela ── */}
-      {!isLoading && hasData && (
+      {!isError && !isLoading && hasData && (
         <div className="flex flex-col">
           {rows.map((row, idx) => (
             <div

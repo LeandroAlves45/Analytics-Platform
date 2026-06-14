@@ -68,7 +68,7 @@ export interface MetricsQueryParams {
   from: string;
   to: string;
   interval: AggregationInterval;
-  endpoints?: string;
+  endpoint?: string;
   method?: string;
 }
 

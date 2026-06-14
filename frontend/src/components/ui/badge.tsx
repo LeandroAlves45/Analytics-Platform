@@ -15,7 +15,7 @@ const badgeVariants = cva(
       variant: {
         // Method badges -> cores semânticas por método HTTP
         // GET: verde (operação segura, sem side effects)
-        get: 'bg-sucess/12 text-sucess',
+        get: 'bg-success/12 text-success',
 
         // POST: azul (criação de recursos)
         post: 'bg-blue/12 text-blue',
@@ -30,7 +30,7 @@ const badgeVariants = cva(
         count: 'bg-purple/15 text-purple rounded-sm text-[10px] font-sans font-medium px-2 py-0.5',
 
         // Badge de status — ex: "Live", "Degraded"
-        success: 'bg-sucess/12 text-sucess rounded-sm text-[10px] font-sans font-sans',
+        success: 'bg-success/12 text-success rounded-sm text-[10px] font-sans',
 
         warning: 'bg-orange/12 text-orange rounded-sm text-[10px] font-sans font-sans',
 
