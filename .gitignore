@@ -57,4 +57,5 @@ docs/sprints_concluidos/*
 docs/adjust_tests/*
 docs/adjust_code/*
 backend/code_review_agent.ts
+docs/code_implementation/*
 

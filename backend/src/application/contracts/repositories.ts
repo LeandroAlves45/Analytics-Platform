@@ -10,6 +10,13 @@ import type {
   QueryAggregatedMetricsInputDTO,
   AggregatedMetricRow,
 } from '@application/dto/MetricsQueryDTO';
+import { AlertRule } from '@domain/entities/AlertRule';
+import type {
+  AlertEvaluationSnapshot,
+  AlertEventOutputDTO,
+  AlertRuleOutputDTO,
+  ListAlertEventsInputDTO,
+} from '@application/dto/AlertDTO';
 
 /**
  * Filtro opcional para leitura de métricas numa janela de agregação específica.
@@ -106,4 +113,71 @@ export interface AggregationReadRepository {
   // Consulta métricas agregadas num intervalo de tempo.
   // Resultados ordenados por time asc.
   findAggregatedMetrics(input: QueryAggregatedMetricsInputDTO): Promise<AggregatedMetricRow[]>;
+}
+
+/**
+ * Representação persistida de endpoint para upsert e join com alert_rules.
+ */
+export interface EndpointRecord {
+  id: string;
+  workspaceId: string;
+  endpoint: string;
+  method: string;
+}
+
+/**
+ * Dados para criar um evento de alerta na BD.
+ */
+export interface CreateAlertEventData {
+  alertRuleId: string;
+  workspaceId: string;
+  value: number;
+  message: string;
+  slackSent: boolean;
+  emailSent: boolean;
+}
+
+/**
+ * Contrato para metadata de endpoints rastreados.
+ * Implementado por DrizzleEndpointRepository.
+ */
+export interface EndpointRepository {
+  upsert(workspaceId: string, endpoint: string, method: string): Promise<EndpointRecord>;
+
+  findByWorkspaceEndpointMethod(
+    workspaceId: string,
+    endpoint: string,
+    method: string
+  ): Promise<EndpointRecord | null>;
+}
+
+/**
+ * Contrato para persistência e leitura de regras/eventos de alerta.
+ * Implementado por DrizzleAlertRepository.
+ */
+export interface AlertRepository {
+  save(rule: AlertRule): Promise<AlertRuleOutputDTO>;
+
+  update(rule: AlertRule): Promise<AlertRuleOutputDTO>;
+
+  delete(alertRuleId: string, workspaceId: string): Promise<void>;
+
+  findById(alertRuleId: string, workspaceId: string): Promise<AlertRuleOutputDTO | null>;
+
+  findByWorkspace(workspaceId: string): Promise<AlertRuleOutputDTO[]>;
+
+  findActiveRules(): Promise<AlertRuleOutputDTO[]>;
+
+  findOpenEvent(alertRuleId: string): Promise<AlertEventOutputDTO | null>;
+
+  createEvent(data: CreateAlertEventData): Promise<AlertEventOutputDTO>;
+
+  resolveEvent(eventId: string, resolvedAt: Date): Promise<void>;
+
+  listEvents(input: ListAlertEventsInputDTO): Promise<AlertEventOutputDTO[]>;
+
+  findEvaluationSnapshot(
+    rule: AlertRuleOutputDTO,
+    windowMinutes: number
+  ): Promise<AlertEvaluationSnapshot>;
 }
