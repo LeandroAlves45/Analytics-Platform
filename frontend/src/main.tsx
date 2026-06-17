@@ -6,6 +6,10 @@
  *   Fornece o cliente de cache a todos os hooks useQuery da aplicação.
  *   Sem este provider, useAggregatedMetrics e useActiveEndpoints falham.
  *
+ * BrowserRouter (react-router-dom):
+ *   Permite NavLink na Sidebar e rotas aninhadas com Outlet no App.
+ *   Deve estar dentro do QueryClientProvider para páginas que usam ambos.
+ *
  * StrictMode (React):
  *   Activa verificações adicionais em desenvolvimento.
  *   Em produção não tem efeito no comportamento.
@@ -14,6 +18,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
 
@@ -46,7 +51,9 @@ const rootElement = document.getElementById('root')!;
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>
 );

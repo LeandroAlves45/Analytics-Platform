@@ -1,22 +1,24 @@
 /**
- * Componente raiz da aplicação React
+ * Componente raiz da aplicação React.
+ * Define o layout fixo e delega o conteúdo scrollável às rotas via Outlet.
  */
 
+import { Route, Routes } from 'react-router-dom';
 import { TopBar } from '@/components/layout/TopBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PollingIndicator } from '@/components/layout/PollingIndicator';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { AlertsPage } from '@/pages/AlertsPage';
+import { AlertEventsPage } from '@/pages/AlertEventsPage';
 
 function App() {
   return (
     // Container raiz: full viewport height, sem overflow no body
     <div className="flex flex-col h-screen bg-app overflow-hidden">
-      {/* TopBar —> posicção fixa no topo, nunca faz scroll */}
       <TopBar />
 
       {/* Área central: sidebar + conteúdo principal side-by-side */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar —> posicção fixa lateral, nunca faz scroll */}
         <Sidebar />
 
         {/* Área de conteúdo principal: scrollável */}
@@ -25,7 +27,11 @@ function App() {
           id="main-content"
           aria-label="Conteúdo principal da dashboard"
         >
-          <DashboardPage />
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/alert-events" element={<AlertEventsPage />} />
+          </Routes>
         </main>
       </div>
 
