@@ -12,6 +12,8 @@ MVP: Ingestão → Aggregation → Dashboard → Alerting → Billing.
 - Testing: TDD; coverage: entities 100%, use cases 100%, controllers 85%+
 - Git: Feature branches, conventional commits, tests PASS
 - NO edits: migrations (create new), .env, hardcoded values
+- Comments and JSDoc in Portuguese-Portugal
+- Always talk in Portuguese
 
 ## COMMANDS
 

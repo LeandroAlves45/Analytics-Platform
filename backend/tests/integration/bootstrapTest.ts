@@ -24,19 +24,36 @@ import { NoOpMetricsCacheService } from '@infra/cache/NoOpMetricsCacheService';
 import { NoOpAggregationQueueService } from '@infra/queue/NoOpAggregationQueueService';
 import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
 import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
+import { DrizzleAlertRepository } from '@infra/repositories/DrizzleAlertRepository';
+import { DrizzleEndpointRepository } from '@infra/repositories/DrizzleEndpointRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
 import { ListActiveEndpointsUseCase } from '@application/usecases/metrics/ListActiveEndpointsUseCase';
-import { MetricsController, AuthenticatedRequest } from '@infra/controllers/MetricsController';
+import { CreateAlertRuleUseCase } from '@application/usecases/alerts/CreateAlertRuleUseCase';
+import { TriggerAlertUseCase } from '@application/usecases/alerts/TriggerAlertUseCase';
+import { UpdateAlertRuleUseCase } from '@application/usecases/alerts/UpdateAlertRuleUseCase';
+import { DeleteAlertRuleUseCase } from '@application/usecases/alerts/DeleteAlertRuleUseCase';
+import { ListAlertRulesUseCase } from '@application/usecases/alerts/ListAlertRulesUseCase';
+import { GetAlertRuleUseCase } from '@application/usecases/alerts/GetAlertRuleUseCase';
+import { ListAlertEventsUseCase } from '@application/usecases/alerts/ListAlertEventsUseCase';
+import { MetricsController } from '@infra/controllers/MetricsController';
 import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
 import { EndpointsController } from '@infra/controllers/EndpointsController';
+import { AlertRulesController } from '@infra/controllers/AlertRulesController';
+import { AlertEventsController } from '@infra/controllers/AlertEventsController';
+import { NoOpNotificationGateway } from '@infra/gateways/NoOpNotificationGateway';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
 import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
+import { createAlertRulesRouter, createAlertEventsRouter } from '@infra/routes/alertsRouter';
 import { TEST_API_KEY_ID, TEST_WORKSPACE_ID } from '../fixtures/metrics';
+import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
 
 export interface TestAppRouters {
   metricsRouter: Router;
   endpointsRouter: Router;
+  alertRulesRouter: Router;
+  alertEventsRouter: Router;
+  triggerAlertUseCase: TriggerAlertUseCase;
 }
 
 /**
@@ -75,13 +92,27 @@ export function bootstrapForTesting(): TestAppRouters {
 
   const aggregationReadRepository = new DrizzleAggregationReadRepository(db);
 
+  const alertRepository = new DrizzleAlertRepository(db);
+
+  const endpointRepository = new DrizzleEndpointRepository(db);
+
   const aggregationService = new NoOpAggregationQueueService();
+
+  const notificationGateway = new NoOpNotificationGateway();
 
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationService);
 
   const queryAggregatedMetricsUseCase = new QueryAggregatedMetricsUseCase(
     aggregationReadRepository
   );
+
+  const createAlertRuleUseCase = new CreateAlertRuleUseCase(alertRepository, endpointRepository);
+  const updateAlertRuleUseCase = new UpdateAlertRuleUseCase(alertRepository, endpointRepository);
+  const deleteAlertRuleUseCase = new DeleteAlertRuleUseCase(alertRepository);
+  const listAlertRulesUseCase = new ListAlertRulesUseCase(alertRepository);
+  const getAlertRuleUseCase = new GetAlertRuleUseCase(alertRepository);
+  const listAlertEventsUseCase = new ListAlertEventsUseCase(alertRepository);
+  const triggerAlertUseCase = new TriggerAlertUseCase(alertRepository, notificationGateway);
 
   const listActiveEndpointsUseCase = new ListActiveEndpointsUseCase(metricsRepository);
 
@@ -91,8 +122,21 @@ export function bootstrapForTesting(): TestAppRouters {
 
   const endpointsController = new EndpointsController(listActiveEndpointsUseCase);
 
+  const alertRulesController = new AlertRulesController(
+    createAlertRuleUseCase,
+    updateAlertRuleUseCase,
+    deleteAlertRuleUseCase,
+    listAlertRulesUseCase,
+    getAlertRuleUseCase
+  );
+
+  const alertEventsController = new AlertEventsController(listAlertEventsUseCase);
+
   return {
     metricsRouter: withAuth(createMetricsRouter(metricsController, metricsQueryController)),
     endpointsRouter: withAuth(createEndpointsRouter(endpointsController)),
+    alertRulesRouter: withAuth(createAlertRulesRouter(alertRulesController)),
+    alertEventsRouter: withAuth(createAlertEventsRouter(alertEventsController)),
+    triggerAlertUseCase,
   };
 }

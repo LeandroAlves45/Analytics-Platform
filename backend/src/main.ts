@@ -104,6 +104,7 @@ async function main(): Promise<void> {
     const shutdown = async (signal: string): Promise<void> => {
       logger.info('server_shutting_down', { signal });
 
+      lifecycle.alertEvaluationScheduler.stop();
       lifecycle.aggregationScheduler.stop();
       await lifecycle.aggregationWorker.close();
       await lifecycle.aggregationQueue.close();

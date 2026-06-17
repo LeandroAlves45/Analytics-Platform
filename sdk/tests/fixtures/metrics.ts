@@ -3,7 +3,7 @@
  * UUIDs válidos (RFC 4122) que passam validação no servidor.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import type { MetricPayload, HttpSenderConfig } from '../../src/HttpSender';
 
 /** URL base do servidor fictício nos testes */

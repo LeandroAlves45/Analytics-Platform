@@ -4,6 +4,19 @@
 
 import type { AlertCondition, AlertRuleStatus } from '@domain/entities/AlertRule';
 
+// Métodos HTTP válidos para filtro de endpoint em regras de alerta.
+// Exportado aqui para evitar duplicação entre CreateAlertRuleUseCase e UpdateAlertRuleUseCase.
+export const VALID_HTTP_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'DELETE',
+  'PATCH',
+  'OPTIONS',
+  'HEAD',
+] as const;
+export type ValidHttpMethod = (typeof VALID_HTTP_METHODS)[number];
+
 export interface CreateAlertRuleInputDTO {
   workspaceId: string;
   name: string;
@@ -110,6 +123,14 @@ export interface TriggerAlertInputDTO {
   rule: AlertRuleOutputDTO;
   observedValue: number;
   message: string;
+  /**
+   * Resultado da verificação de evento aberto feita pelo chamador.
+   * - `undefined` → não verificado, TriggerAlertUseCase faz a query internamente.
+   * - `null`      → verificado, sem evento aberto (caminho normal do EvaluateAlertsUseCase).
+   * - DTO         → verificado, evento aberto encontrado (atalho para o caminho de cooldown).
+   * Evita a query redundante quando EvaluateAlertsUseCase já consultou findOpenEventsBatch.
+   */
+  knownOpenEvent?: AlertEventOutputDTO | null;
 }
 
 export interface TriggerAlertOutputDTO {

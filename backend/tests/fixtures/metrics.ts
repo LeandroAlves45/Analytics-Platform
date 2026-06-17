@@ -6,6 +6,9 @@
 import { randomUUID } from 'crypto';
 import type { CreateMetricInput } from '@domain/entities/Metric';
 
+/** UUID v4 válido para userId em testes de integração (owner do workspace) */
+export const TEST_USER_ID = '440e8400-e29b-41d4-a716-446655440000';
+
 /** UUID v4 válido para workspaceId em testes */
 export const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440000';
 export const TEST_WORKSPACE_ID_2 = '550e8400-e29b-41d4-a716-446655440001';

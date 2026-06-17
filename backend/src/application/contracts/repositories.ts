@@ -4,19 +4,19 @@
  * estas interfaces -> nunca as implementações concretas (Drizzle, Redis, etc).
  */
 
-import { Metric } from '@domain/entities/Metric';
-import { ScheduleAggregationRequest, AggregationResult } from '@application/dto/AggregationDTO';
-import type {
-  QueryAggregatedMetricsInputDTO,
-  AggregatedMetricRow,
-} from '@application/dto/MetricsQueryDTO';
 import { AlertRule } from '@domain/entities/AlertRule';
 import type {
   AlertEvaluationSnapshot,
   AlertEventOutputDTO,
   AlertRuleOutputDTO,
   ListAlertEventsInputDTO,
-} from '@application/dto/AlertDTO';
+} from '@application/dto/AlertsDTO';
+import { Metric } from '@domain/entities/Metric';
+import { ScheduleAggregationRequest, AggregationResult } from '@application/dto/AggregationDTO';
+import type {
+  QueryAggregatedMetricsInputDTO,
+  AggregatedMetricRow,
+} from '@application/dto/MetricsQueryDTO';
 
 /**
  * Filtro opcional para leitura de métricas numa janela de agregação específica.
@@ -130,6 +130,7 @@ export interface EndpointRecord {
  */
 export interface CreateAlertEventData {
   alertRuleId: string;
+  ruleName: string;
   workspaceId: string;
   value: number;
   message: string;
@@ -180,4 +181,28 @@ export interface AlertRepository {
     rule: AlertRuleOutputDTO,
     windowMinutes: number
   ): Promise<AlertEvaluationSnapshot>;
+
+  /**
+   * Devolve o snapshot de avaliação para múltiplas regras em paralelo.
+   * Substitui N chamadas sequenciais a findEvaluationSnapshot no ciclo de avaliação.
+   * Retorna Map<ruleId, snapshot> — regras sem dados de métricas ficam ausentes do mapa.
+   */
+  findEvaluationSnapshotsBatch(
+    rules: AlertRuleOutputDTO[]
+  ): Promise<Map<string, AlertEvaluationSnapshot>>;
+
+  /**
+   * Devolve o evento aberto (resolvedAt = null) por ruleId numa única query.
+   * Substitui N chamadas sequenciais a findOpenEvent no ciclo de avaliação.
+   * Retorna Map<ruleId, event> — regras sem evento aberto ficam ausentes do mapa.
+   */
+  findOpenEventsBatch(ruleIds: string[]): Promise<Map<string, AlertEventOutputDTO>>;
+
+  /**
+   * Actualiza slackSent e emailSent após o envio da notificação.
+   * Chamado por TriggerAlertUseCase depois de sendAlert ter devolvido resultado —
+   * necessário porque o evento é criado antes da notificação (com false/false)
+   * para garantir cooldown, e depois é corrigido com os valores reais.
+   */
+  updateNotificationStatus(eventId: string, slackSent: boolean, emailSent: boolean): Promise<void>;
 }

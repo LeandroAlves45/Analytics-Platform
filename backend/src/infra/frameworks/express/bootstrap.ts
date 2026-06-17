@@ -22,18 +22,35 @@ import { RedisMetricsCache } from '@infra/cache/RedisMetricsCache';
 import { BullMQAggregationQueue } from '@infra/queue/BullMQAggregationQueue';
 import { DrizzleMetricsRepository } from '@infra/repositories/DrizzleMetricsRepository';
 import { DrizzleAggregationRepository } from '@infra/repositories/DrizzleAggregationRepository';
+import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
+import { DrizzleAlertRepository } from '@infra/repositories/DrizzleAlertRepository';
+import { DrizzleEndpointRepository } from '@infra/repositories/DrizzleEndpointRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import { AggregateMetricsUseCase } from '@application/usecases/aggregation/AggregateMetricsUseCase';
-import { AggregationWorker } from '@infra/queue/AggregationWorker';
-import { AggregationScheduler } from '@infra/queue/AggregationScheduler';
-import { MetricsController } from '@infra/controllers/MetricsController';
-import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
 import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
 import { ListActiveEndpointsUseCase } from '@application/usecases/metrics/ListActiveEndpointsUseCase';
+import { CreateAlertRuleUseCase } from '@application/usecases/alerts/CreateAlertRuleUseCase';
+import { UpdateAlertRuleUseCase } from '@application/usecases/alerts/UpdateAlertRuleUseCase';
+import { DeleteAlertRuleUseCase } from '@application/usecases/alerts/DeleteAlertRuleUseCase';
+import { ListAlertRulesUseCase } from '@application/usecases/alerts/ListAlertRulesUseCase';
+import { GetAlertRuleUseCase } from '@application/usecases/alerts/GetAlertRuleUseCase';
+import { ListAlertEventsUseCase } from '@application/usecases/alerts/ListAlertEventsUseCase';
+import { TriggerAlertUseCase } from '@application/usecases/alerts/TriggerAlertUseCase';
+import { EvaluateAlertsUseCase } from '@application/usecases/alerts/EvaluateAlertsUseCase';
+import { AggregationWorker } from '@infra/queue/AggregationWorker';
+import { AggregationScheduler } from '@infra/queue/AggregationScheduler';
+import { AlertEvaluationScheduler } from '@infra/queue/AlertEvaluationScheduler';
+import { MetricsController } from '@infra/controllers/MetricsController';
 import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
 import { EndpointsController } from '@infra/controllers/EndpointsController';
+import { AlertRulesController } from '@infra/controllers/AlertRulesController';
+import { AlertEventsController } from '@infra/controllers/AlertEventsController';
+import { SlackWebhookGateway } from '@infra/gateways/SlackWebhookGateway';
+import { NodemailerEmailService } from '@infra/gateways/NodemailerEmailService';
+import { CompositeNotificationGateway } from '@infra/gateways/CompositeNotificationGateway';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
 import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
+import { createAlertRulesRouter, createAlertEventsRouter } from '@infra/routes/alertsRouter';
 
 /**
  * Tipo que descreve o conjunto de routers prontos a montar no app Express.
@@ -42,6 +59,8 @@ import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
 export interface AppRouters {
   metricsRouter: Router;
   endpointsRouter: Router;
+  alertRulesRouter: Router;
+  alertEventsRouter: Router;
 }
 
 /**
@@ -55,6 +74,7 @@ export interface AppLifecycle {
   aggregationScheduler: AggregationScheduler;
   aggregationWorker: AggregationWorker;
   aggregationQueue: BullMQAggregationQueue;
+  alertEvaluationScheduler: AlertEvaluationScheduler;
 }
 
 export interface BootstrapResult {
@@ -85,11 +105,19 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
   const metricsRepository = new DrizzleMetricsRepository(db, metricsCache);
   const aggregationRepository = new DrizzleAggregationRepository(db);
   const aggregationReadRepository = new DrizzleAggregationReadRepository(db);
+  const alertRepository = new DrizzleAlertRepository(db);
+  const endpointRepository = new DrizzleEndpointRepository(db);
 
   // Passo 4: queue BullMQ
   const aggregationQueue = new BullMQAggregationQueue(bullMQRedisClient);
 
-  // Passo 5: use case com repositório e queue
+  // Passo 5: gateways
+  const notificationGateway = new CompositeNotificationGateway([
+    new SlackWebhookGateway(),
+    new NodemailerEmailService(),
+  ]);
+
+  // Passo 6: use case com repositório e queue
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
   const queryAggregatedMetricsUseCase = new QueryAggregatedMetricsUseCase(
     aggregationReadRepository
@@ -97,27 +125,53 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
   const listActiveEndpointsUseCase = new ListActiveEndpointsUseCase(metricsRepository);
   const aggregateMetricsUseCase = new AggregateMetricsUseCase(metricsRepository);
 
-  // Passo 6: workers e scheduler
+  const createAlertRuleUseCase = new CreateAlertRuleUseCase(alertRepository, endpointRepository);
+  const updateAlertRuleUseCase = new UpdateAlertRuleUseCase(alertRepository, endpointRepository);
+  const deleteAlertRuleUseCase = new DeleteAlertRuleUseCase(alertRepository);
+  const listAlertRulesUseCase = new ListAlertRulesUseCase(alertRepository);
+  const getAlertRuleUseCase = new GetAlertRuleUseCase(alertRepository);
+  const listAlertEventsUseCase = new ListAlertEventsUseCase(alertRepository);
+  const triggerAlertUseCase = new TriggerAlertUseCase(alertRepository, notificationGateway);
+  const evaluateAlertsUseCase = new EvaluateAlertsUseCase(alertRepository, triggerAlertUseCase);
+
+  // Passo 7: workers e scheduler
   const aggregationWorker = new AggregationWorker(
     aggregateMetricsUseCase,
     aggregationRepository,
     bullMQRedisClient
   );
   const aggregationScheduler = new AggregationScheduler(metricsRepository, aggregationQueue);
+  const alertEvaluationScheduler = new AlertEvaluationScheduler(evaluateAlertsUseCase);
 
-  // Arranca o scheduler -> começa a enfileirar jobs a cada 5 minutos.
+  // Arranca os schedulers de agregação (5 min) e de avaliação de alertas (60 s).
   aggregationScheduler.start();
+  alertEvaluationScheduler.start();
 
-  // Passo 7: controller e router
+  // Passo 8: controllers e routers
   const metricsController = new MetricsController(recordMetricUseCase);
   const metricsQueryController = new MetricsQueryController(queryAggregatedMetricsUseCase);
   const endpointsController = new EndpointsController(listActiveEndpointsUseCase);
-
-  const metricsRouter = createMetricsRouter(metricsController, metricsQueryController);
-  const endpointsRouter = createEndpointsRouter(endpointsController);
+  const alertRulesController = new AlertRulesController(
+    createAlertRuleUseCase,
+    updateAlertRuleUseCase,
+    deleteAlertRuleUseCase,
+    listAlertRulesUseCase,
+    getAlertRuleUseCase
+  );
+  const alertEventsController = new AlertEventsController(listAlertEventsUseCase);
 
   return {
-    routers: { metricsRouter, endpointsRouter },
-    lifecycle: { aggregationScheduler, aggregationWorker, aggregationQueue },
+    routers: {
+      metricsRouter: createMetricsRouter(metricsController, metricsQueryController),
+      endpointsRouter: createEndpointsRouter(endpointsController),
+      alertRulesRouter: createAlertRulesRouter(alertRulesController),
+      alertEventsRouter: createAlertEventsRouter(alertEventsController),
+    },
+    lifecycle: {
+      aggregationScheduler,
+      aggregationWorker,
+      aggregationQueue,
+      alertEvaluationScheduler,
+    },
   };
 }

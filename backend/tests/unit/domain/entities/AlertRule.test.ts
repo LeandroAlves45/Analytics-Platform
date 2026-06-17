@@ -1,5 +1,10 @@
 /**
- * Testes unitários para a entidade AlertRule.
+ * Testes unitários da entidade AlertRule.
+ *
+ * Cobrem: construção com input válido, reconstitution a partir da BD,
+ * validações fail-fast, e toda a lógica pura de avaliação de alertas
+ * (shouldTrigger, shouldAutoResolve, extractObservedValue).
+ * Não há stubs de infraestrutura — a entidade não tem I/O.
  */
 
 import { AlertRule, ALERT_MIN_SAMPLE_COUNT } from '@domain/entities/AlertRule';
@@ -36,6 +41,7 @@ describe('AlertRule Entity', () => {
   });
 
   describe('reconstitute', () => {
+    // reconstitute deve preservar os valores da BD tal-e-qual — sem gerar novo id nem timestamps
     it('should preserve id and timestamps', () => {
       const rule = AlertRule.reconstitute(BASE_ALERT_RULE_PERSISTED);
 
@@ -64,7 +70,7 @@ describe('AlertRule Entity', () => {
           new AlertRule({
             ...BASE_ALERT_RULE_INPUT,
             condition: 'error_rate',
-            threshold: 1.5,
+            threshold: 1.5, // error_rate aceita apenas ]0, 1]
           })
       ).toThrow(ValidationError);
     });
@@ -121,6 +127,7 @@ describe('AlertRule Entity', () => {
       expect(rule.shouldTrigger(600, ALERT_MIN_SAMPLE_COUNT, false)).toBe(true);
     });
 
+    // Cooldown: não deve disparar um segundo evento enquanto o anterior está aberto
     it('should return false when open event exists (cooldown)', () => {
       const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
       expect(rule.shouldTrigger(600, ALERT_MIN_SAMPLE_COUNT, true)).toBe(false);
@@ -143,6 +150,7 @@ describe('AlertRule Entity', () => {
       expect(rule.shouldAutoResolve(400, true)).toBe(true);
     });
 
+    // Sem evento aberto não há nada a resolver
     it('should return false when no open event exists', () => {
       const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
       expect(rule.shouldAutoResolve(400, false)).toBe(false);
@@ -158,6 +166,22 @@ describe('AlertRule Entity', () => {
     it('should build a human-readable message', () => {
       const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
       expect(rule.buildTriggerMessage(600)).toContain('Alert "High p95 latency"');
+    });
+  });
+
+  describe('hasNotificationChannel()', () => {
+    it('should return true when slackWebhookUrl is set', () => {
+      const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
+      expect(rule.hasNotificationChannel()).toBe(true);
+    });
+
+    it('should return true when emailAddresses is non-empty', () => {
+      const rule = new AlertRule({
+        ...BASE_ALERT_RULE_INPUT,
+        slackWebhookUrl: null,
+        emailAddresses: ['ops@example.com'],
+      });
+      expect(rule.hasNotificationChannel()).toBe(true);
     });
   });
 });

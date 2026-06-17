@@ -1,15 +1,18 @@
 /**
- * AlertRule é uma regra de alerta que define quando um alerta deve ser disparado.
+ * Entidade de domínio AlertRule.
+ *
+ * Encapsula a configuração de uma regra de alerta (condição, threshold, janela
+ * temporal) e os canais de notificação a usar quando a condição é violada.
+ * Toda a lógica de avaliação vive aqui — as camadas superiores nunca acedem
+ * diretamente ao threshold; chamam shouldTrigger / shouldAutoResolve para que
+ * as regras de negócio permaneçam num único lugar.
  */
 
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '@shared/errors';
 import { isValidUuid } from '@shared/validation/uuid';
 
-/**
- * Condições suportadas pelo motor de alertas.
- * Valores alinhados com a coluna alert_rules.condition na BD.
- */
+// Os valores têm de estar em sincronização com a coluna alert_rules.condition na BD.
 export const ALERT_CONDITIONS = ['latency_p95', 'error_rate', 'status_5xx_count'] as const;
 
 export type AlertCondition = (typeof ALERT_CONDITIONS)[number];
@@ -18,12 +21,17 @@ export const ALERT_RULE_STATUSES = ['active', 'inactive'] as const;
 
 export type AlertRuleStatus = (typeof ALERT_RULE_STATUSES)[number];
 
-/**
- * Amostra mínima antes de disparar alerta.
- * Regra de negócio: abaixo disto o sinal estatístico é demasiado fraco.
- */
+// Abaixo deste número de amostras, a janela de observação tem dados insuficientes
+// para que a métrica seja estatisticamente significativa — disparar um alerta
+// produziria ruído em vez de sinal.
 export const ALERT_MIN_SAMPLE_COUNT = 10;
 
+/**
+ * Input aceite pelas camadas superiores para criar uma nova regra.
+ * `condition` é tipado como `string` (não `AlertCondition`) para que a interface
+ * aceite input não validado vindo do HTTP ou dos use cases; o construtor da
+ * entidade valida e restringe para o union permitido.
+ */
 export interface CreateAlertRuleInput {
   workspaceId: string;
   endpointId?: string | null;
@@ -37,6 +45,11 @@ export interface CreateAlertRuleInput {
   status?: string;
 }
 
+/**
+ * Input usado ao reidratar uma linha persistida da base de dados.
+ * Traz o `id` estável e os timestamps que pertencem à BD e devem ser
+ * preservados tal-e-qual, em vez de regenerados.
+ */
 export interface ReconstituteAlertRuleInput extends CreateAlertRuleInput {
   id: string;
   createdAt: Date;
@@ -44,12 +57,16 @@ export interface ReconstituteAlertRuleInput extends CreateAlertRuleInput {
 }
 
 /**
- * Entidade AlertRule — define quando e como notificar sobre degradação de API.
+ * Modela a configuração e a lógica de avaliação de uma regra de alerta.
  *
- * Responsabilidades:
- * - Validar invariantes na construção
- * - Expor lógica pura de trigger/resolve (sem I/O)
- * - Manter imutabilidade após criação
+ * Decisões de design a ter em conta:
+ * - **Imutável após construção**: todas as propriedades são `readonly`; sem setters.
+ * - **Validação fail-fast**: `ValidationError` é lançado no construtor,
+ *   nunca diferido para um `.validate()` chamado externamente.
+ * - **Sem I/O**: `shouldTrigger` e `shouldAutoResolve` recebem todo o estado
+ *   como argumentos, tornando a entidade testável sem stubs de infraestrutura.
+ * - **Factory method `reconstitute`**: separa a hidratação da BD da criação,
+ *   mantendo o segundo argumento `persisted` como detalhe interno.
  */
 export class AlertRule {
   readonly id: string;
@@ -66,6 +83,12 @@ export class AlertRule {
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
+  /**
+   * @param persisted - Fornecido apenas por `reconstitute`. Partilhar um único
+   *   construtor concentra a lógica de atribuição num só lugar; o argumento
+   *   opcional distingue o caminho "nova entidade" (UUID gerado aleatoriamente)
+   *   do caminho "carregada da BD" (id e timestamps preservados).
+   */
   constructor(
     input: CreateAlertRuleInput,
     persisted?: { id: string; createdAt: Date; updatedAt: Date }
@@ -87,6 +110,11 @@ export class AlertRule {
     this.updatedAt = persisted?.updatedAt ?? new Date();
   }
 
+  /**
+   * Reidrata uma regra a partir de uma linha persistida na BD, preservando
+   * `id` e timestamps. Preferir este método ao construtor direto ao carregar
+   * dados de armazenamento — sinaliza a intenção e mantém `persisted` interno.
+   */
   static reconstitute(input: ReconstituteAlertRuleInput): AlertRule {
     return new AlertRule(input, {
       id: input.id,
@@ -103,9 +131,6 @@ export class AlertRule {
     return this.slackWebhookUrl !== null || this.emailAddresses.length > 0;
   }
 
-  /**
-   * Extrai o valor observado do snapshot de agregação conforme a condição da regra.
-   */
   extractObservedValue(snapshot: {
     latencyP95: number;
     errorRate: number;
@@ -119,6 +144,9 @@ export class AlertRule {
       case 'status_5xx_count':
         return snapshot.status5xxCount;
       default: {
+        // Guarda de exaustividade: se uma nova condição for adicionada a
+        // ALERT_CONDITIONS sem atualizar este switch, o TypeScript falha aqui
+        // em tempo de compilação.
         const _exhaustive: never = this.condition;
         return _exhaustive;
       }
@@ -134,7 +162,10 @@ export class AlertRule {
   }
 
   /**
-   * Cooldown: se já existe evento aberto, não dispara novamente.
+   * Guarda de cooldown: apenas um evento aberto por regra em simultâneo.
+   * O chamador deve passar `hasOpenEvent = true` enquanto existir um evento de
+   * alerta não resolvido para esta regra, impedindo que uma única violação
+   * gere eventos duplicados.
    */
   shouldTrigger(observedValue: number, sampleCount: number, hasOpenEvent: boolean): boolean {
     if (!this.isActive()) {
@@ -153,7 +184,8 @@ export class AlertRule {
   }
 
   /**
-   * Auto-resolve quando a métrica normaliza abaixo do threshold.
+   * Retorna `true` quando a métrica recupera abaixo do threshold enquanto ainda
+   * existe um evento aberto. O chamador é responsável por fechar esse evento.
    */
   shouldAutoResolve(observedValue: number, hasOpenEvent: boolean): boolean {
     if (!hasOpenEvent) {
@@ -272,9 +304,8 @@ export class AlertRule {
     }
   }
 
-  /**
-   * Pelo menos um canal de notificação é obrigatório para evitar regras silenciosas.
-   */
+  // Pelo menos um canal é obrigatório para evitar regras "silenciosas" — que
+  // avaliam corretamente mas nunca notificam ninguém quando disparam.
   private static validateNotificationChannels(input: CreateAlertRuleInput): void {
     const hasSlack = !!input.slackWebhookUrl?.trim();
     const hasEmail = (input.emailAddresses?.length ?? 0) > 0;

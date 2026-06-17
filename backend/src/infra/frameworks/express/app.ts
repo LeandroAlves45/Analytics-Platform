@@ -123,6 +123,8 @@ export function createApp(): Express {
 export function registerRoutes(app: Express, routers: AppRouters): void {
   app.use('/api/metrics', routers.metricsRouter);
   app.use('/api/endpoints', routers.endpointsRouter);
+  app.use('/api/alert-rules', routers.alertRulesRouter);
+  app.use('/api/alert-events', routers.alertEventsRouter);
 
   // Handler de 404 — só chega aqui se nenhum router acima correspondeu ao path.
   // Deve ficar depois de todos os routers para não interceptar rotas válidas.
