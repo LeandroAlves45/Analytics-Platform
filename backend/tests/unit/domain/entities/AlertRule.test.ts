@@ -85,6 +85,53 @@ describe('AlertRule Entity', () => {
           })
       ).toThrow(ValidationError);
     });
+
+    it('should throw when endpointId is invalid', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, endpointId: 'not-a-uuid' })).toThrow(
+        ValidationError
+      );
+    });
+
+    it('should throw when name is blank', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, name: '   ' })).toThrow(
+        ValidationError
+      );
+    });
+
+    it('should throw when threshold is not finite', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, threshold: Number.NaN })).toThrow(
+        ValidationError
+      );
+    });
+
+    it('should throw when latency threshold is not positive', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, threshold: 0 })).toThrow(
+        ValidationError
+      );
+    });
+
+    it('should throw when windowMinutes is not a positive integer', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, windowMinutes: 0 })).toThrow(
+        ValidationError
+      );
+    });
+
+    it('should throw when email address format is invalid', () => {
+      expect(
+        () =>
+          new AlertRule({
+            ...BASE_ALERT_RULE_INPUT,
+            slackWebhookUrl: null,
+            emailAddresses: ['not-an-email'],
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it('should throw when status is invalid', () => {
+      expect(() => new AlertRule({ ...BASE_ALERT_RULE_INPUT, status: 'paused' })).toThrow(
+        ValidationError
+      );
+    });
   });
 
   describe('isActive', () => {
@@ -118,6 +165,26 @@ describe('AlertRule Entity', () => {
       expect(
         rule.extractObservedValue({ latencyP95: 100, errorRate: 0.12, status5xxCount: 0 })
       ).toBe(0.12);
+    });
+
+    it('should return status5xxCount for status_5xx_count condition', () => {
+      const rule = new AlertRule({
+        ...BASE_ALERT_RULE_INPUT,
+        condition: 'status_5xx_count',
+        threshold: 5,
+      });
+      expect(
+        rule.extractObservedValue({ latencyP95: 100, errorRate: 0.01, status5xxCount: 12 })
+      ).toBe(12);
+    });
+
+    it('should reach exhaustive default when condition is corrupted at runtime', () => {
+      const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
+      Object.defineProperty(rule, 'condition', { value: 'corrupted' });
+
+      expect(rule.extractObservedValue({ latencyP95: 1, errorRate: 1, status5xxCount: 1 })).toBe(
+        'corrupted'
+      );
     });
   });
 
@@ -163,9 +230,34 @@ describe('AlertRule Entity', () => {
   });
 
   describe('buildTriggerMessage()', () => {
-    it('should build a human-readable message', () => {
+    it('should build a human-readable message for latency_p95', () => {
       const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
       expect(rule.buildTriggerMessage(600)).toContain('Alert "High p95 latency"');
+    });
+
+    it('should format error_rate message with percentage', () => {
+      const rule = new AlertRule({
+        ...BASE_ALERT_RULE_INPUT,
+        condition: 'error_rate',
+        threshold: 0.05,
+      });
+      expect(rule.buildTriggerMessage(0.12)).toContain('error rate');
+    });
+
+    it('should format status_5xx_count message with count', () => {
+      const rule = new AlertRule({
+        ...BASE_ALERT_RULE_INPUT,
+        condition: 'status_5xx_count',
+        threshold: 5,
+      });
+      expect(rule.buildTriggerMessage(12)).toContain('12 server errors');
+    });
+
+    it('should reach exhaustive default when condition is corrupted at runtime', () => {
+      const rule = new AlertRule(BASE_ALERT_RULE_INPUT);
+      Object.defineProperty(rule, 'condition', { value: 'corrupted' });
+
+      expect(rule.buildTriggerMessage(12)).toBe('corrupted');
     });
   });
 

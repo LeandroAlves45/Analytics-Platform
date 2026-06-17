@@ -114,6 +114,55 @@ describe('CreateAlertRuleUseCase', () => {
       })
     ).rejects.toThrow(ValidationError);
   });
+
+  it('should throw when endpoint does not start with slash', async () => {
+    const useCase = new CreateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        name: 'Invalid endpoint',
+        condition: 'latency_p95',
+        threshold: 500,
+        endpoint: 'api/users',
+        method: 'GET',
+        slackWebhookUrl: 'https://hooks.slack.com/services/test',
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('should throw when method is invalid', async () => {
+    const useCase = new CreateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        name: 'Invalid method',
+        condition: 'latency_p95',
+        threshold: 500,
+        endpoint: '/api/users',
+        method: 'INVALID',
+        slackWebhookUrl: 'https://hooks.slack.com/services/test',
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('should create a rule without endpoint when endpoint and method are omitted', async () => {
+    const alertRepository = makeAlertRepository();
+    const endpointRepository = makeEndpointRepository();
+    const useCase = new CreateAlertRuleUseCase(alertRepository, endpointRepository);
+
+    await useCase.execute({
+      workspaceId: TEST_WORKSPACE_ID,
+      name: 'Workspace-wide rule',
+      condition: 'latency_p95',
+      threshold: 500,
+      slackWebhookUrl: 'https://hooks.slack.com/services/test',
+    });
+
+    expect(endpointRepository.upsert).not.toHaveBeenCalled();
+    expect(alertRepository.save).toHaveBeenCalled();
+  });
 });
 
 describe('UpdateAlertRuleUseCase', () => {
@@ -145,6 +194,77 @@ describe('UpdateAlertRuleUseCase', () => {
     ).rejects.toThrow(ValidationError);
   });
 
+  it('should throw when method is provided without endpoint', async () => {
+    const useCase = new UpdateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+        method: 'GET',
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('should throw when updated endpoint does not start with slash', async () => {
+    const useCase = new UpdateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+        endpoint: 'api/orders',
+        method: 'POST',
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('should throw when updated method is invalid', async () => {
+    const useCase = new UpdateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+        endpoint: '/api/orders',
+        method: 'INVALID',
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('should upsert endpoint when updating endpoint and method', async () => {
+    const alertRepository = makeAlertRepository();
+    const endpointRepository = makeEndpointRepository();
+    const useCase = new UpdateAlertRuleUseCase(alertRepository, endpointRepository);
+
+    await useCase.execute({
+      workspaceId: TEST_WORKSPACE_ID,
+      alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+      endpoint: '/api/orders',
+      method: 'POST',
+    });
+
+    expect(endpointRepository.upsert).toHaveBeenCalledWith(
+      TEST_WORKSPACE_ID,
+      '/api/orders',
+      'POST'
+    );
+    expect(alertRepository.update).toHaveBeenCalled();
+  });
+
+  it('should throw when endpoint and method are inconsistently null', async () => {
+    const useCase = new UpdateAlertRuleUseCase(makeAlertRepository(), makeEndpointRepository());
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+        endpoint: '/api/users',
+        method: null,
+      })
+    ).rejects.toThrow(ValidationError);
+  });
+
   it('should clear endpoint when both endpoint and method are null', async () => {
     const alertRepository = makeAlertRepository();
     const useCase = new UpdateAlertRuleUseCase(alertRepository, makeEndpointRepository());
@@ -154,6 +274,22 @@ describe('UpdateAlertRuleUseCase', () => {
       alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
       endpoint: null,
       method: null,
+    });
+
+    expect(alertRepository.update).toHaveBeenCalled();
+  });
+
+  it('should apply optional field overrides when updating', async () => {
+    const alertRepository = makeAlertRepository();
+    const useCase = new UpdateAlertRuleUseCase(alertRepository, makeEndpointRepository());
+
+    await useCase.execute({
+      workspaceId: TEST_WORKSPACE_ID,
+      alertRuleId: BASE_ALERT_RULE_OUTPUT.id,
+      name: 'Renamed rule',
+      description: 'Updated description',
+      slackWebhookUrl: 'https://hooks.slack.com/updated',
+      emailAddresses: ['alerts@example.com'],
     });
 
     expect(alertRepository.update).toHaveBeenCalled();
@@ -174,6 +310,20 @@ describe('DeleteAlertRuleUseCase', () => {
       BASE_ALERT_RULE_OUTPUT.id,
       TEST_WORKSPACE_ID
     );
+  });
+
+  it('should throw NotFoundError when rule does not exist', async () => {
+    const alertRepository = makeAlertRepository({
+      findById: jest.fn().mockResolvedValue(null),
+    });
+    const useCase = new DeleteAlertRuleUseCase(alertRepository);
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: '00000000-0000-4000-8000-000000000099',
+      })
+    ).rejects.toThrow(NotFoundError);
   });
 });
 
@@ -198,6 +348,20 @@ describe('GetAlertRuleUseCase', () => {
     });
 
     expect(result.id).toBe(BASE_ALERT_RULE_OUTPUT.id);
+  });
+
+  it('should throw NotFoundError when rule does not exist', async () => {
+    const alertRepository = makeAlertRepository({
+      findById: jest.fn().mockResolvedValue(null),
+    });
+    const useCase = new GetAlertRuleUseCase(alertRepository);
+
+    await expect(
+      useCase.execute({
+        workspaceId: TEST_WORKSPACE_ID,
+        alertRuleId: '00000000-0000-4000-8000-000000000099',
+      })
+    ).rejects.toThrow(NotFoundError);
   });
 });
 
@@ -393,5 +557,21 @@ describe('EvaluateAlertsUseCase', () => {
     expect(result.resolvedCount).toBe(0);
     // Batch queries não devem ser chamadas com lista vazia.
     expect(alertRepository.findEvaluationSnapshotsBatch).not.toHaveBeenCalled();
+  });
+
+  it('should skip rule when snapshot is missing from batch', async () => {
+    const alertRepository = makeAlertRepository({
+      findEvaluationSnapshotsBatch: jest.fn().mockResolvedValue(new Map()),
+    });
+    const useCase = new EvaluateAlertsUseCase(
+      alertRepository,
+      new TriggerAlertUseCase(alertRepository, makeNotificationGateway())
+    );
+
+    const result = await useCase.execute();
+
+    expect(result.evaluatedRules).toBe(1);
+    expect(result.triggeredCount).toBe(0);
+    expect(alertRepository.createEvent).not.toHaveBeenCalled();
   });
 });
