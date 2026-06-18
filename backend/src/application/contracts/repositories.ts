@@ -4,6 +4,10 @@
  * estas interfaces -> nunca as implementações concretas (Drizzle, Redis, etc).
  */
 
+import { User } from '@domain/entities/User';
+import { Workspace } from '@domain/entities/Workspace';
+import { ApiKey } from '@domain/entities/ApiKey';
+import type { ApiKeyOutputDTO } from '@application/dto/WorkspacesDTO';
 import { AlertRule } from '@domain/entities/AlertRule';
 import type {
   AlertEvaluationSnapshot,
@@ -97,12 +101,84 @@ export interface AggregationRepository {
  * Implementado por DrizzleApiKeyRepository na camada infra.
  */
 export interface ApiKeyRepository {
-  // Devolve o workspaceId associado a esta API key (após verificar o hash).
-  // Devolve null se a key não existir ou estiver revogada.
-  findWorkspaceIdByKey(apiKey: string): Promise<string | null>;
+  /** Lookup por plaintext key — bcrypt compare em candidatos ativos. */
+  findActiveByPlaintextKey(plaintextKey: string): Promise<{
+    id: string;
+    workspaceId: string;
+    keyHash: string;
+  } | null>;
 
   // Atualiza o campo last_used_at de uma API key.
   updateLastUsed(apiKey: string): Promise<void>;
+
+  save(apiKey: ApiKey): Promise<ApiKeyOutputDTO>;
+
+  findByWorkspace(workspaceId: string): Promise<ApiKeyOutputDTO[]>;
+
+  findById(apiKeyId: string, workspaceId: string): Promise<ApiKeyOutputDTO | null>;
+
+  revoke(apiKeyId: string, workspaceId: string): Promise<void>;
+}
+
+/**
+ * Contrato para persistência de utilizadores.
+ */
+export interface UserRepository {
+  save(user: User): Promise<{ id: string; email: string; name: string | null }>;
+
+  findByEmail(email: string): Promise<User | null>;
+
+  findById(userId: string): Promise<User | null>;
+}
+
+/**
+ * Contrato para workspaces e membership.
+ */
+export interface WorkspaceRepository {
+  save(workspace: Workspace): Promise<{ id: string; name: string; slug: string; plan: string }>;
+
+  findById(workspaceId: string): Promise<Workspace | null>;
+
+  findByUserId(userId: string): Promise<Workspace | null>;
+
+  addMember(workspaceId: string, userId: string, role: string): Promise<void>;
+
+  isMember(workspaceId: string, userId: string, role: string): Promise<boolean>;
+
+  updatePlan(workspaceId: string, plan: string): Promise<void>;
+}
+
+/**
+ * Contrato para tracking de consumo mensal.
+ */
+export interface UsageTrackingRepository {
+  increment(workspaceId: string, month: Date): Promise<number>;
+
+  getCurrentMonthUsage(workspaceId: string): Promise<number>;
+}
+
+/**
+ * Contrato para subscrições Stripe persistidas.
+ */
+export interface StripeSubscriptionRepository {
+  upsert(data: {
+    workspaceId: string;
+    stripeCustomerId: string;
+    stripeSubscriptionId: string;
+    stripeProductId?: string | null;
+    plan: string;
+    status: string;
+    currentPeriodStart?: Date | null;
+    currentPeriodEnd?: Date | null;
+    trialEnd?: Date | null;
+  }): Promise<void>;
+
+  findByWorkspaceId(workspaceId: string): Promise<{
+    plan: string;
+    status: string;
+    stripeCustomerId: string;
+    currentPeriodEnd?: Date | null;
+  } | null>;
 }
 
 /**

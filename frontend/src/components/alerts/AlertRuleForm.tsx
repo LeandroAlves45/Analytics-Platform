@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/select';
 import type { AlertConditionMetric, AlertRule, CreateAlertRuleInput } from '@/types/alerts';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const CONDITION_OPTIONS: { value: AlertConditionMetric; label: string }[] = [
   { value: 'latency_p95', label: 'P95 Latency (ms)' },
   { value: 'error_rate', label: 'Error Rate (0-1)' },
@@ -82,8 +84,8 @@ export function AlertRuleForm({
 
     const emails = emailAddresses
       .split(',')
-      .map((email) => email.trim())
-      .filter(Boolean);
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0 && EMAIL_REGEX.test(e));
 
     onSubmit({
       name: name.trim(),
