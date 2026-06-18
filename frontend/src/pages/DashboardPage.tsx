@@ -9,6 +9,7 @@ import { ThroughputChart } from '@/components/dashboard/ThroughputChart';
 import { ErrorRateChart } from '@/components/dashboard/ErrorRateChart';
 import { EndpointsTable } from '@/components/dashboard/EndpointsTable';
 import { EndpointFilter } from '@/components/dashboard/EndpointFilter';
+import { RecentAlertsWidget } from '@/components/alerts/RecentAlertsWidget';
 
 export function DashboardPage() {
   return (
@@ -30,7 +31,11 @@ export function DashboardPage() {
         <ThroughputChart />
       </div>
 
-      <EndpointsTable />
+      {/* Alert Widget: alertas abertos recentes + link para histórico */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-[10px]">
+        <EndpointsTable />
+        <RecentAlertsWidget />
+      </div>
     </div>
   );
 }

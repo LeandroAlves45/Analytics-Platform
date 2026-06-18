@@ -11,7 +11,7 @@ import { AlertEventStatusBadge } from './AlertStatusBadge';
 import { useRecentAlertEvents } from '@/hooks/useRecentAlertEvents';
 import { formatRelativeTime } from '@/lib/alert_formatters';
 
-export function RecentAlertWidget() {
+export function RecentAlertsWidget() {
   const { data, isLoading, isError, error, refetch } = useRecentAlertEvents();
 
   const events = data?.events ?? [];
