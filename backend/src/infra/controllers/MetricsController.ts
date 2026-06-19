@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
+import { resolveIngestContext } from '@infra/controllers/resolveTenantContext';
 
 /**
  * Schema Zod para validar o body do request de ingestão.
@@ -91,7 +91,7 @@ export class MetricsController {
     let apiKeyId: string;
 
     try {
-      ({ workspaceId, apiKeyId } = resolveTenantContext(req));
+      ({ workspaceId, apiKeyId } = resolveIngestContext(req));
     } catch (error) {
       next(error);
       return;

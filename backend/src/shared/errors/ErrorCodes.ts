@@ -1,8 +1,8 @@
-// src/shared/errors/ErrorCodes.ts
-//
-// Códigos de erro legíveis por máquina (machine-readable).
-// Usados nas respostas JSON da API dentro de error.code.
-// Permitem ao frontend/cliente tratar erros sem depender da mensagem textual.
+/**
+ * Códigos de erro legíveis por máquina (machine-readable).
+ * Usados nas respostas JSON da API dentro de error.code.
+ * Permitem ao frontend/cliente tratar erros sem depender da mensagem textual.
+ */
 
 /** Mapa de todos os códigos de erro suportados pela aplicação. */
 export const ErrorCodes = {
@@ -22,6 +22,10 @@ export const ErrorCodes = {
   CONFLICT: 'CONFLICT',
   /** Dados de input inválidos (HTTP 422). */
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  /** Muitas requisições (HTTP 429). */
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
+  /** Quota excedida (HTTP 403). */
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
 } as const;
 
 /** Union type de todos os códigos válidos — garante type-safety ao criar AppError. */

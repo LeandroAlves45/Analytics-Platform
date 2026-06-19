@@ -38,10 +38,20 @@ const envSchema = z.object({
   // JWT
   JWT_SECRET: z.string().min(1),
   JWT_EXPIRES_IN: z.string().default('24h'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  STRIPE_PRICE_PRO: z.string().min(1),
+  STRIPE_PRICE_BUSINESS: z.string().min(1),
+  STRIPE_PRICE_ENTERPRISE: z.string().min(1),
+
+  // Rate limiting
+  RATE_LIMIT_FREE: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_PRO: z.coerce.number().int().positive().default(1000),
+  RATE_LIMIT_BUSINESS: z.coerce.number().int().positive().default(5000),
 
   // Slack
   SLACK_WEBHOOK_URL: z.string().url().optional(),

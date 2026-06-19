@@ -32,7 +32,7 @@ export interface AuthWorkspaceOutputDTO {
   plan: string;
 }
 
-export interface AuthTokenOutputDTO {
+export interface AuthTokensOutputDTO {
   accessToken: string;
   refreshToken: string;
   expiresIn: string;

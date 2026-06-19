@@ -1,12 +1,12 @@
-// src/shared/errors/ValidationError.ts
-//
-// Erro lançado quando dados de input são inválidos.
-// HTTP 422 Unprocessable Entity.
-//
-// Quando usar:
-//   - Validação do schema Zod falha num controller
-//   - Use case recebe dados semanticamente inválidos
-//   - Regras de negócio violadas no input (ex: latencyMs negativo)
+/**
+ * Erro lançado quando dados de input são inválidos.
+ * HTTP 422 Unprocessable Entity.
+ *
+ * Quando usar:
+ *   - Validação do schema Zod falha num controller
+ *   - Use case recebe dados semanticamente inválidos
+ *   - Regras de negócio violadas no input (ex: latencyMs negativo)
+ */
 
 import { AppError } from './AppError';
 import { ErrorCodes } from './ErrorCodes';

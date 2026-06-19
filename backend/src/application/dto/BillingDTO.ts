@@ -2,9 +2,14 @@
  * DTOs para billing, usage e Stripe.
  */
 
+import type { WorkspacePlan } from '@domain/entities/Workspace';
+
+/** Planos pagos — exclui 'free' que nunca passa por checkout. */
+export type PaidPlan = Exclude<WorkspacePlan, 'free'>;
+
 export interface BillingInfoOutputDTO {
   workspaceId: string;
-  plan: string;
+  plan: WorkspacePlan;
   requestsTracked: number;
   requestsLimit: number;
   usagePercentage: number;
@@ -16,7 +21,7 @@ export interface BillingInfoOutputDTO {
 export interface CreateCheckoutInputDTO {
   workspaceId: string;
   userId: string;
-  targetPlan: 'pro' | 'business' | 'enterprise';
+  targetPlan: PaidPlan;
 }
 
 export interface CheckoutSessionOutputDTO {

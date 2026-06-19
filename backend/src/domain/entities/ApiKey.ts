@@ -5,7 +5,7 @@
  * Geração do plaintext `apk_...` é responsabilidade do use case (infra bcrypt).
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { ValidationError } from '@shared/errors';
 import { isValidUuid } from '@shared/validation/uuid';
 
@@ -61,8 +61,7 @@ export class ApiKey {
 
   /** Gera plaintext key para mostrar ao utilizador uma única vez. */
   static generatePlaintextKey(): string {
-    const random = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '').slice(0, 8);
-    return `${API_KEY_PREFIX}${random}`;
+    return `${API_KEY_PREFIX}${randomBytes(32).toString('hex')}`;
   }
 
   isActive(): boolean {

@@ -109,7 +109,7 @@ export interface ApiKeyRepository {
   } | null>;
 
   // Atualiza o campo last_used_at de uma API key.
-  updateLastUsed(apiKey: string): Promise<void>;
+  updateLastUsed(apiKeyId: string): Promise<void>;
 
   save(apiKey: ApiKey): Promise<ApiKeyOutputDTO>;
 
@@ -143,7 +143,7 @@ export interface WorkspaceRepository {
 
   addMember(workspaceId: string, userId: string, role: string): Promise<void>;
 
-  isMember(workspaceId: string, userId: string, role: string): Promise<boolean>;
+  isMember(workspaceId: string, userId: string): Promise<boolean>;
 
   updatePlan(workspaceId: string, plan: string): Promise<void>;
 }

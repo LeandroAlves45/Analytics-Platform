@@ -1,7 +1,7 @@
-// src/shared/errors/AppError.ts
-//
-// Classe base para todos os erros da aplicação.
-// Todas as subclasses herdam statusCode, code, isOperational e toJSON().
+/**
+ * Classe base para todos os erros da aplicação.
+ * Todas as subclasses herdam statusCode, code, isOperational e toJSON().
+ */
 
 import { type ErrorCode, type HTTPStatuscode } from './ErrorCodes';
 

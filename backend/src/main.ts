@@ -89,8 +89,11 @@ async function main(): Promise<void> {
     });
 
     // Passo 5: composition root
-    const app = createApp();
-    const { routers, lifecycle } = bootstrap(config.METRICS_CACHE_TTL_SECONDS);
+    const { routers, lifecycle, stripeWebhookRouter } = bootstrap(
+      config.METRICS_CACHE_TTL_SECONDS,
+      config
+    );
+    const app = createApp(stripeWebhookRouter);
     registerRoutes(app, routers);
     startServer(app, config.PORT);
 

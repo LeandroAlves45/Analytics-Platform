@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { ListAlertEventsUseCase } from '@application/usecases/alerts/ListAlertEventsUseCase';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
+import { resolveDashboardContext } from '@infra/controllers/resolveTenantContext';
 import { formatValidationError } from '@infra/controllers/formatValidationError';
 
 const listEventsSchema = z.object({
@@ -28,7 +28,7 @@ export class AlertEventsController {
     }
 
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       const result = await this.listAlertEventsUseCase.execute({
         workspaceId,
         alertRuleId: parseResult.data.alertRuleId,

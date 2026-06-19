@@ -1,12 +1,12 @@
-// src/shared/errors/NotFoundError.ts
-//
-// Erro lançado quando um recurso não existe na base de dados.
-// HTTP 404 Not Found.
-//
-// Quando usar:
-//   - Repository não encontra um registo pelo ID
-//   - Use case pede um workspace que não existe
-//   - Endpoint de API com identificador inválido
+/**
+ * Erro lançado quando um recurso não existe na base de dados.
+ * HTTP 404 Not Found.
+ *
+ * Quando usar:
+ *   - Repository não encontra um registo pelo ID
+ *   - Use case pede um workspace que não existe
+ *   - Endpoint de API com identificador inválido
+ */
 
 import { AppError } from './AppError';
 import { ErrorCodes } from './ErrorCodes';

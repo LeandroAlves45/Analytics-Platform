@@ -16,6 +16,7 @@
  */
 
 import { Router } from 'express';
+import type { Config } from '@infra/frameworks/config';
 import { getDatabase } from '@infra/frameworks/database/connection';
 import { getRedisClient, getBullMQRedisClient } from '@infra/frameworks/cache/redis';
 import { RedisMetricsCache } from '@infra/cache/RedisMetricsCache';
@@ -25,6 +26,10 @@ import { DrizzleAggregationRepository } from '@infra/repositories/DrizzleAggrega
 import { DrizzleAggregationReadRepository } from '@infra/repositories/DrizzleAggregationReadRepository';
 import { DrizzleAlertRepository } from '@infra/repositories/DrizzleAlertRepository';
 import { DrizzleEndpointRepository } from '@infra/repositories/DrizzleEndpointRepository';
+import { DrizzleUserRepository } from '@infra/repositories/DrizzleUserRepository';
+import { DrizzleWorkspaceRepository } from '@infra/repositories/DrizzleWorkspaceRepository';
+import { DrizzleApiKeyRepository } from '@infra/repositories/DrizzleApiKeyRepository';
+import { DrizzleStripeSubscriptionRepository } from '@infra/repositories/DrizzleStripeSubscriptionRepository';
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
 import { AggregateMetricsUseCase } from '@application/usecases/aggregation/AggregateMetricsUseCase';
 import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
@@ -48,9 +53,20 @@ import { AlertEventsController } from '@infra/controllers/AlertEventsController'
 import { SlackWebhookGateway } from '@infra/gateways/SlackWebhookGateway';
 import { NodemailerEmailService } from '@infra/gateways/NodemailerEmailService';
 import { CompositeNotificationGateway } from '@infra/gateways/CompositeNotificationGateway';
+import { StripeGateway } from '@infra/gateways/StripeGateway';
+import { NoOpStripeGateway } from '@infra/gateways/NoOpStripeGateway';
+import { JwtService } from '@infra/services/JwtService';
+import { createApiKeyAuthMiddleware } from '@infra/middleware/ApiKeyAuthMiddleware';
+import { createJwtAuthMiddleware } from '@infra/middleware/JwtAuthMiddleware';
+import { createRateLimitMiddleware } from '@infra/middleware/RateLimitMiddleware';
+import { CreateCheckoutSessionUseCase } from '@application/usecases/billing/CreateCheckoutSessionUseCase';
+import { HandleStripeWebhookUseCase } from '@application/usecases/billing/HandleStripeWebhookUseCase';
+import { BillingController } from '@infra/controllers/BillingController';
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
 import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
 import { createAlertRulesRouter, createAlertEventsRouter } from '@infra/routes/alertsRouter';
+import { createBillingRouter } from '@infra/routes/billingRouter';
+import { createStripeWebhookRouter } from '@infra/routes/stripeWebhookRouter';
 
 /**
  * Tipo que descreve o conjunto de routers prontos a montar no app Express.
@@ -61,6 +77,7 @@ export interface AppRouters {
   endpointsRouter: Router;
   alertRulesRouter: Router;
   alertEventsRouter: Router;
+  billingRouter: Router;
 }
 
 /**
@@ -80,6 +97,7 @@ export interface AppLifecycle {
 export interface BootstrapResult {
   routers: AppRouters;
   lifecycle: AppLifecycle;
+  stripeWebhookRouter: Router;
 }
 
 /**
@@ -88,9 +106,11 @@ export interface BootstrapResult {
  *
  * Esta função é chamada uma única vez em main.ts antes de startServer().
  *
- * @returns Objecto com todos os routers configurados.
+ * @param metricsCacheTtlSeconds - TTL do cache Redis de métricas
+ * @param config - Configuração validada da aplicação
+ * @returns Objecto com routers, lifecycle e webhook Stripe
  */
-export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
+export function bootstrap(metricsCacheTtlSeconds: number, config: Config): BootstrapResult {
   // Passo 1: infra externa.
   const db = getDatabase();
   const redisClient = getRedisClient();
@@ -107,6 +127,10 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
   const aggregationReadRepository = new DrizzleAggregationReadRepository(db);
   const alertRepository = new DrizzleAlertRepository(db);
   const endpointRepository = new DrizzleEndpointRepository(db);
+  const userRepository = new DrizzleUserRepository(db);
+  const workspaceRepository = new DrizzleWorkspaceRepository(db);
+  const apiKeyRepository = new DrizzleApiKeyRepository(db);
+  const stripeSubscriptionRepository = new DrizzleStripeSubscriptionRepository(db);
 
   // Passo 4: queue BullMQ
   const aggregationQueue = new BullMQAggregationQueue(bullMQRedisClient);
@@ -116,6 +140,28 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
     new SlackWebhookGateway(),
     new NodemailerEmailService(),
   ]);
+
+  const stripeGateway = config.STRIPE_SECRET_KEY
+    ? new StripeGateway(config)
+    : new NoOpStripeGateway();
+
+  const jwtService = new JwtService(config);
+  const apiKeyAuth = createApiKeyAuthMiddleware(apiKeyRepository);
+  const jwtAuth = createJwtAuthMiddleware(jwtService);
+  const rateLimit = createRateLimitMiddleware(redisClient, workspaceRepository);
+
+  const createCheckoutSessionUseCase = new CreateCheckoutSessionUseCase(
+    stripeGateway,
+    stripeSubscriptionRepository,
+    workspaceRepository,
+    userRepository,
+    config
+  );
+  const handleStripeWebhookUseCase = new HandleStripeWebhookUseCase(
+    stripeSubscriptionRepository,
+    workspaceRepository
+  );
+  const stripeWebhookRouter = createStripeWebhookRouter(stripeGateway, handleStripeWebhookUseCase);
 
   // Passo 6: use case com repositório e queue
   const recordMetricUseCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
@@ -159,13 +205,21 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
     getAlertRuleUseCase
   );
   const alertEventsController = new AlertEventsController(listAlertEventsUseCase);
+  const billingController = new BillingController(createCheckoutSessionUseCase);
 
   return {
     routers: {
-      metricsRouter: createMetricsRouter(metricsController, metricsQueryController),
+      metricsRouter: createMetricsRouter(
+        metricsController,
+        metricsQueryController,
+        apiKeyAuth,
+        rateLimit,
+        jwtAuth
+      ),
       endpointsRouter: createEndpointsRouter(endpointsController),
       alertRulesRouter: createAlertRulesRouter(alertRulesController),
       alertEventsRouter: createAlertEventsRouter(alertEventsController),
+      billingRouter: createBillingRouter(billingController, jwtAuth),
     },
     lifecycle: {
       aggregationScheduler,
@@ -173,5 +227,6 @@ export function bootstrap(metricsCacheTtlSeconds: number): BootstrapResult {
       aggregationQueue,
       alertEvaluationScheduler,
     },
+    stripeWebhookRouter,
   };
 }

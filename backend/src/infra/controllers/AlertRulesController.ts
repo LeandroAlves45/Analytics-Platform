@@ -12,7 +12,7 @@ import { DeleteAlertRuleUseCase } from '@application/usecases/alerts/DeleteAlert
 import { ListAlertRulesUseCase } from '@application/usecases/alerts/ListAlertRulesUseCase';
 import { GetAlertRuleUseCase } from '@application/usecases/alerts/GetAlertRuleUseCase';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
+import { resolveDashboardContext } from '@infra/controllers/resolveTenantContext';
 import { formatValidationError } from '@infra/controllers/formatValidationError';
 import { VALID_HTTP_METHODS, type AlertRuleOutputDTO } from '@application/dto/AlertsDTO';
 
@@ -73,7 +73,7 @@ export class AlertRulesController {
     }
 
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       const rule = await this.createAlertRuleUseCase.execute({
         workspaceId,
         ...parseResult.data,
@@ -87,7 +87,7 @@ export class AlertRulesController {
 
   list = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       const result = await this.listAlertRulesUseCase.execute({ workspaceId });
 
       res.status(200).json({
@@ -110,7 +110,7 @@ export class AlertRulesController {
     }
 
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       const rule = await this.getAlertRuleUseCase.execute({
         workspaceId,
         alertRuleId: paramResult.data.id,
@@ -138,7 +138,7 @@ export class AlertRulesController {
     }
 
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       const rule = await this.updateAlertRuleUseCase.execute({
         workspaceId,
         alertRuleId: paramResult.data.id,
@@ -160,7 +160,7 @@ export class AlertRulesController {
     }
 
     try {
-      const { workspaceId } = resolveTenantContext(req);
+      const { workspaceId } = resolveDashboardContext(req);
       await this.deleteAlertRuleUseCase.execute({
         workspaceId,
         alertRuleId: paramResult.data.id,

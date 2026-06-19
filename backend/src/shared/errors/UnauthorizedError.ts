@@ -1,9 +1,9 @@
-// src/shared/errors/UnauthorizedError.ts
-//
-// Erro lançado quando o request não tem autenticação válida.
-// HTTP 401 Unauthorized — token ausente, expirado ou inválido.
-//
-// Para utilizador autenticado sem permissão, usar ForbiddenError (403).
+/**
+ * Erro lançado quando o request não tem autenticação válida.
+ * HTTP 401 Unauthorized — token ausente, expirado ou inválido.
+ *
+ * Para utilizador autenticado sem permissão, usar ForbiddenError (403).
+ */
 
 import { AppError } from './AppError';
 import { ErrorCodes } from './ErrorCodes';

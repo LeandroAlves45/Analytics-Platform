@@ -5,7 +5,7 @@
  * HTTP verb + path → método do controller.
  */
 
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import { MetricsController } from '@infra/controllers/MetricsController';
 import { MetricsQueryController } from '@infra/controllers/MetricsQueryController';
 
@@ -14,10 +14,16 @@ import { MetricsQueryController } from '@infra/controllers/MetricsQueryControlle
  *
  * @param ingestController - POST /api/metrics
  * @param queryController  - GET /api/metrics/aggregated
+ * @param apiKeyAuth       - Autenticação por API key (ingestão)
+ * @param rateLimit        - Rate limit por plano (ingestão)
+ * @param jwtAuth          - Autenticação JWT (consulta agregada)
  */
 export function createMetricsRouter(
   ingestController: MetricsController,
-  queryController: MetricsQueryController
+  queryController: MetricsQueryController,
+  apiKeyAuth: RequestHandler,
+  rateLimit: RequestHandler,
+  jwtAuth: RequestHandler
 ): Router {
   const router = Router();
 
@@ -33,7 +39,7 @@ export function createMetricsRouter(
    *   409 Conflict       — requestId duplicado
    *   500 Internal       — erro inesperado (tratado pelo errorHandlerMiddleware)
    */
-  router.post('/', ingestController.ingest);
+  router.post('/', apiKeyAuth, rateLimit, ingestController.ingest);
 
   /**
    * GET /aggregated
@@ -41,7 +47,7 @@ export function createMetricsRouter(
    *
    * Query params: from, to, interval, endpoint?, method?
    */
-  router.get('/aggregated', queryController.getAggregated);
+  router.get('/aggregated', jwtAuth, queryController.getAggregated);
 
   return router;
 }

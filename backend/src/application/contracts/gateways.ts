@@ -23,6 +23,8 @@ export interface NotificationGateway {
   sendAlert(payload: AlertNotificationPayload): Promise<AlertNotificationResult>;
 }
 
+import type { PaidPlan } from '@application/dto/BillingDTO';
+
 /**
  * Contrato para integração Stripe.
  * Implementado por StripeGateway (prod) ou NoOpStripeGateway (dev).
@@ -34,7 +36,7 @@ export interface StripeGateway {
     customerId: string;
     priceId: string;
     workspaceId: string;
-    targetPlan?: 'pro' | 'business' | 'enterprise';
+    targetPlan: PaidPlan;
     successUrl: string;
     cancelUrl: string;
   }): Promise<string>;

@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 import { QueryAggregatedMetricsUseCase } from '@application/usecases/metrics/QueryAggregatedMetricsUseCase';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
+import { resolveDashboardContext } from '@infra/controllers/resolveTenantContext';
 
 const aggregatedQuerySchema = z.object({
   from: z.string().datetime({ message: 'from must be a valid ISO 8601 datetime' }),
@@ -63,7 +63,7 @@ export class MetricsQueryController {
     let workspaceId: string;
 
     try {
-      ({ workspaceId } = resolveTenantContext(req));
+      ({ workspaceId } = resolveDashboardContext(req));
     } catch (error) {
       next(error);
       return;

@@ -18,7 +18,7 @@
  * o seu próprio workspaceId — vem sempre do contexto de autenticação.
  */
 
-import { NextFunction, Response, Router } from 'express';
+import { NextFunction, Response, Router, RequestHandler } from 'express';
 import { getDatabase } from '@infra/frameworks/database';
 import { NoOpMetricsCacheService } from '@infra/cache/NoOpMetricsCacheService';
 import { NoOpAggregationQueueService } from '@infra/queue/NoOpAggregationQueueService';
@@ -45,6 +45,14 @@ import { NoOpNotificationGateway } from '@infra/gateways/NoOpNotificationGateway
 import { createMetricsRouter } from '@infra/routes/metricsRouter';
 import { createEndpointsRouter } from '@infra/routes/endpointsRouter';
 import { createAlertRulesRouter, createAlertEventsRouter } from '@infra/routes/alertsRouter';
+import { createBillingRouter } from '@infra/routes/billingRouter';
+import { BillingController } from '@infra/controllers/BillingController';
+import { CreateCheckoutSessionUseCase } from '@application/usecases/billing/CreateCheckoutSessionUseCase';
+import { NoOpStripeGateway } from '@infra/gateways/NoOpStripeGateway';
+import { DrizzleStripeSubscriptionRepository } from '@infra/repositories/DrizzleStripeSubscriptionRepository';
+import { DrizzleUserRepository } from '@infra/repositories/DrizzleUserRepository';
+import { DrizzleWorkspaceRepository } from '@infra/repositories/DrizzleWorkspaceRepository';
+import { loadConfig } from '@infra/frameworks/config';
 import { TEST_API_KEY_ID, TEST_WORKSPACE_ID } from '../fixtures/metrics';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
 
@@ -53,8 +61,11 @@ export interface TestAppRouters {
   endpointsRouter: Router;
   alertRulesRouter: Router;
   alertEventsRouter: Router;
+  billingRouter: Router;
   triggerAlertUseCase: TriggerAlertUseCase;
 }
+
+const passthroughMiddleware: RequestHandler = (_req, _res, next) => next();
 
 /**
  * Substitui temporariamente o AuthMiddleware nos testes de integração,
@@ -132,11 +143,33 @@ export function bootstrapForTesting(): TestAppRouters {
 
   const alertEventsController = new AlertEventsController(listAlertEventsUseCase);
 
+  const config = loadConfig();
+  const workspaceRepository = new DrizzleWorkspaceRepository(db);
+  const userRepository = new DrizzleUserRepository(db);
+  const stripeSubscriptionRepository = new DrizzleStripeSubscriptionRepository(db);
+  const createCheckoutSessionUseCase = new CreateCheckoutSessionUseCase(
+    new NoOpStripeGateway(),
+    stripeSubscriptionRepository,
+    workspaceRepository,
+    userRepository,
+    config
+  );
+  const billingController = new BillingController(createCheckoutSessionUseCase);
+
   return {
-    metricsRouter: withAuth(createMetricsRouter(metricsController, metricsQueryController)),
+    metricsRouter: withAuth(
+      createMetricsRouter(
+        metricsController,
+        metricsQueryController,
+        passthroughMiddleware,
+        passthroughMiddleware,
+        passthroughMiddleware
+      )
+    ),
     endpointsRouter: withAuth(createEndpointsRouter(endpointsController)),
     alertRulesRouter: withAuth(createAlertRulesRouter(alertRulesController)),
     alertEventsRouter: withAuth(createAlertEventsRouter(alertEventsController)),
+    billingRouter: withAuth(createBillingRouter(billingController, passthroughMiddleware)),
     triggerAlertUseCase,
   };
 }

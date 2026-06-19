@@ -5,7 +5,7 @@
  *   registerRoutes()  — routers de negócio + 404 + error handler
  */
 
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Express, Request, Response, NextFunction, Router } from 'express';
 import { AppRouters } from './bootstrap';
 import { logger } from '@infra/frameworks/logging';
 import { checkDatabaseConnection } from '@infra/frameworks/database/connection';
@@ -25,10 +25,16 @@ declare global {
 /**
  * Cria a aplicação Express com middleware de infra.
  *
+ * @param stripeWebhookRouter - Router montado ANTES do JSON parser (raw body Stripe)
  * @returns Instância Express configurada com middleware de infra
  */
-export function createApp(): Express {
+export function createApp(stripeWebhookRouter?: Router): Express {
   const app = express();
+
+  // Webhook Stripe primeiro — signature verification exige raw body.
+  if (stripeWebhookRouter) {
+    app.use('/api/webhooks/stripe', stripeWebhookRouter);
+  }
 
   // Parseia o body de requests com Content-Type: application/json.
   // Limite de 1mb é suficiente para payloads de métricas.
@@ -125,6 +131,7 @@ export function registerRoutes(app: Express, routers: AppRouters): void {
   app.use('/api/endpoints', routers.endpointsRouter);
   app.use('/api/alert-rules', routers.alertRulesRouter);
   app.use('/api/alert-events', routers.alertEventsRouter);
+  app.use('/api/billing', routers.billingRouter);
 
   // Handler de 404 — só chega aqui se nenhum router acima correspondeu ao path.
   // Deve ficar depois de todos os routers para não interceptar rotas válidas.

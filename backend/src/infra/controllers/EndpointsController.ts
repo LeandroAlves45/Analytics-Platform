@@ -10,7 +10,7 @@ import { z } from 'zod';
 
 import { ListActiveEndpointsUseCase } from '@application/usecases/metrics/ListActiveEndpointsUseCase';
 import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveTenantContext } from '@infra/controllers/resolveTenantContext';
+import { resolveDashboardContext } from '@infra/controllers/resolveTenantContext';
 
 const DEFAULT_LOOKBACK_MINUTES = 1440;
 
@@ -49,7 +49,7 @@ export class EndpointsController {
     let workspaceId: string;
 
     try {
-      ({ workspaceId } = resolveTenantContext(req));
+      ({ workspaceId } = resolveDashboardContext(req));
     } catch (error) {
       next(error);
       return;

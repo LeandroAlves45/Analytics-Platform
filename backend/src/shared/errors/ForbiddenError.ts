@@ -1,11 +1,11 @@
-// src/shared/errors/ForbiddenError.ts
-//
-// Erro lançado quando o utilizador está autenticado mas não tem permissão.
-// HTTP 403 Forbidden.
-//
-// Quando usar:
-//   - Utilizador tenta aceder a workspace de outro tenant
-//   - Role insuficiente para a operação (viewer vs admin)
+/**
+ * Erro lançado quando o utilizador está autenticado mas não tem permissão.
+ * HTTP 403 Forbidden.
+ *
+ * Quando usar:
+ *   - Utilizador tenta aceder a workspace de outro tenant
+ *   - Role insuficiente para a operação (viewer vs admin)
+ */
 
 import { AppError } from './AppError';
 import { ErrorCodes } from './ErrorCodes';
