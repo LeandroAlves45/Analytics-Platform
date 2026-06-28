@@ -1,17 +1,20 @@
 /**
- * Request Express estendido com contexto de tenant injectado pelos middlewares.
+ * Request Express estendido com contexto multi-tenant injectado pelos middlewares.
  *
  * Campos preenchidos consoante o tipo de autenticação:
- * - API key (ingestão): workspaceId + apiKeyId
- * - JWT (dashboard/billing): workspaceId + userId
+ * - API key (ingestão POST /api/metrics): `workspaceId` + `apiKeyId`
+ * - JWT (dashboard, billing, /me): `workspaceId` + `userId`
  *
- * Em testes, simulateAuthMiddleware preenche workspaceId/apiKeyId.
- * Em produção sem contexto válido, resolveIngestContext/resolveDashboardContext rejeitam com 401.
+ * Nunca assumir que todos os campos estão presentes — usar
+ * `resolveIngestContext` ou `resolveDashboardContext` nos controllers.
  */
 import type { Request } from 'express';
 
 export interface AuthenticatedRequest extends Request {
+  /** Workspace activo — injectado por JWT ou API key middleware. */
   workspaceId?: string;
+  /** ID da API key usada na ingestão — só presente com ApiKeyAuthMiddleware. */
   apiKeyId?: string;
+  /** ID do utilizador — só presente com JwtAuthMiddleware. */
   userId?: string;
 }

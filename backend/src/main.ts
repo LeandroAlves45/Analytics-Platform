@@ -93,7 +93,7 @@ async function main(): Promise<void> {
       config.METRICS_CACHE_TTL_SECONDS,
       config
     );
-    const app = createApp(stripeWebhookRouter);
+    const app = createApp(stripeWebhookRouter, config.CORS_ORIGIN);
     registerRoutes(app, routers);
     startServer(app, config.PORT);
 

@@ -11,12 +11,14 @@ import type {
   StripeSubscriptionRepository,
   WorkspaceRepository,
 } from '@application/contracts/repositories';
+import type { WorkspacePlanCache } from '@infra/cache/WorkspacePlanCache';
 import { logger } from '@infra/frameworks/logging';
 
 export class HandleStripeWebhookUseCase {
   constructor(
     private readonly stripeSubscriptionRepository: StripeSubscriptionRepository,
-    private readonly workspaceRepository: WorkspaceRepository
+    private readonly workspaceRepository: WorkspaceRepository,
+    private readonly workspacePlanCache: WorkspacePlanCache
   ) {}
 
   async execute(event: { type: string; data: unknown }): Promise<void> {
@@ -57,6 +59,7 @@ export class HandleStripeWebhookUseCase {
     });
 
     await this.workspaceRepository.updatePlan(wsId, plan);
+    await this.workspacePlanCache.invalidate(wsId);
   }
 
   private async handleSubscriptionChange(data: Record<string, unknown>): Promise<void> {
@@ -79,5 +82,6 @@ export class HandleStripeWebhookUseCase {
     });
 
     await this.workspaceRepository.updatePlan(wsId, plan);
+    await this.workspacePlanCache.invalidate(wsId);
   }
 }

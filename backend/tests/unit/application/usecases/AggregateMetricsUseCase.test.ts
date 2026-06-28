@@ -51,6 +51,7 @@ function makeMockRepository(metrics: Metric[]): jest.Mocked<MetricsRepository> {
       );
     }),
     getActiveEndpoints: jest.fn(),
+    getActiveEndpointsForWorkspace: jest.fn(),
   };
 }
 

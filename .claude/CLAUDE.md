@@ -14,6 +14,8 @@ MVP: Ingestão → Aggregation → Dashboard → Alerting → Billing.
 - NO edits: migrations (create new), .env, hardcoded values
 - Comments and JSDoc in Portuguese-Portugal
 - Always talk in Portuguese
+- Always avaliate your answers before you give me anything.
+- Always avaliate how the code and the file has been implemented and when writting MD files use JSDoc and comments to better explain the code and file.
 
 ## COMMANDS
 

@@ -22,6 +22,7 @@ function makeMockRepository(activeEndpoints: ActiveEndpoint[]): jest.Mocked<Metr
     existsByRequestId: jest.fn(),
     getRecent: jest.fn(),
     getActiveEndpoints: jest.fn().mockResolvedValue(activeEndpoints),
+    getActiveEndpointsForWorkspace: jest.fn().mockResolvedValue([]),
   };
 }
 

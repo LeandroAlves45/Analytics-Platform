@@ -1,5 +1,7 @@
 /**
- * Autentica utilizador com email/password e emite tokens.
+ * Autentica utilizador com email/password e emite par access + refresh token.
+ *
+ * Side-effects: grava refresh token em Redis; log `user_logged_in`.
  */
 
 import bcrypt from 'bcryptjs';
@@ -10,6 +12,7 @@ import type { LoginInputDTO, AuthTokensOutputDTO } from '@application/dto/AuthDT
 import { JwtService } from '@infra/services/JwtService';
 import { UnauthorizedError, NotFoundError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
+import { assertActiveUser } from './assertActiveUser';
 
 export class LoginUserUseCase {
   constructor(
@@ -17,9 +20,18 @@ export class LoginUserUseCase {
     private readonly workspaceRepository: WorkspaceRepository,
     private readonly jwtService: JwtService,
     private readonly refreshTokenStore: RefreshTokenStore,
-    private readonly refreshTokenTtlSeconds: number
+    private readonly refreshTokenTtlSeconds: number,
+    private readonly jwtExpiresIn: string
   ) {}
 
+  /**
+   * Valida credenciais e devolve tokens + perfil user/workspace.
+   *
+   * @param input - Email e password em plaintext (hash comparado com bcrypt).
+   * @returns Par JWT + refresh opaco + metadados user/workspace.
+   * @throws {UnauthorizedError} Email inexistente ou password incorrecta (mensagem genérica).
+   * @throws {NotFoundError} Utilizador sem workspace associado.
+   */
   async execute(input: LoginInputDTO): Promise<AuthTokensOutputDTO> {
     const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
@@ -30,6 +42,8 @@ export class LoginUserUseCase {
     if (!valid) {
       throw new UnauthorizedError('Invalid email or password');
     }
+
+    assertActiveUser(user);
 
     const workspace = await this.workspaceRepository.findByUserId(user.id);
     if (!workspace) {
@@ -55,7 +69,7 @@ export class LoginUserUseCase {
     return {
       accessToken,
       refreshToken,
-      expiresIn: '24h',
+      expiresIn: this.jwtExpiresIn,
       user: {
         id: user.id,
         email: user.email.value,

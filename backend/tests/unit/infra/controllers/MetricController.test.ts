@@ -350,7 +350,7 @@ describe('MetricsController', () => {
       expect(mockUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('should allow ingest without auth context in development', async () => {
+    it('should require auth in development mode (no UUID fallback outside test env)', async () => {
       process.env.NODE_ENV = 'development';
 
       const req = createMockRequest({
@@ -359,15 +359,10 @@ describe('MetricsController', () => {
       });
       const res = createMockResponse();
 
-      mockUseCase.execute.mockResolvedValue({
-        metricId: TEST_WORKSPACE_ID,
-        recordedAt: new Date(),
-      });
-
       await controller.ingest(req as AuthenticatedRequest, res as Response, mockNext);
 
-      expect(res.status).toHaveBeenCalledWith(202);
-      expect(mockUseCase.execute).toHaveBeenCalled();
+      expect(mockNext).toHaveBeenCalledWith(expect.any(UnauthorizedError));
+      expect(mockUseCase.execute).not.toHaveBeenCalled();
     });
   });
 });

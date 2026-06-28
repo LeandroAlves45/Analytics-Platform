@@ -36,8 +36,9 @@ export class DrizzleWorkspaceRepository implements WorkspaceRepository {
 
       return row;
     } catch (error) {
-      const pgError = error as { code?: string };
-      if (pgError.code === '23505') {
+      const pgError = error as { code?: string; cause?: { code?: string } };
+      const pgCode = pgError.code ?? pgError.cause?.code;
+      if (pgCode === '23505') {
         throw new ValidationError('Workspace slug already taken', [
           { field: 'slug', message: 'This slug is already in use' },
         ]);

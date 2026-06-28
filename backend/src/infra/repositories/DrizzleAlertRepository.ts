@@ -298,10 +298,10 @@ export class DrizzleAlertRepository implements AlertRepository {
       .from(metrics5min)
       .where(and(...conditions));
 
-    const totalCount = agg?.totalCount ?? 0;
-    const total4xx = agg?.total4xx ?? 0;
-    const total5xx = agg?.total5xx ?? 0;
-    const latencyP95 = agg?.weightedP95 ?? 0;
+    const totalCount = Number(agg?.totalCount ?? 0);
+    const total4xx = Number(agg?.total4xx ?? 0);
+    const total5xx = Number(agg?.total5xx ?? 0);
+    const latencyP95 = Number(agg?.weightedP95 ?? 0);
     const errorRate = totalCount > 0 ? (total4xx + total5xx) / totalCount : 0;
 
     return {

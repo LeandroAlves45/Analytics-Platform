@@ -60,6 +60,12 @@ export class User {
       ]);
     }
 
+    if (typeof input.name === 'string' && !input.name.trim()) {
+      throw new ValidationError('Invalid user data', [
+        { field: 'name', message: 'Name cannot be empty' },
+      ]);
+    }
+
     const status = input.status ?? 'active';
     if (!USER_STATUSES.includes(status as UserStatus)) {
       throw new ValidationError('Invalid user data', [
@@ -75,7 +81,7 @@ export class User {
     }
     const parts = this.name.trim().split(/\s+/);
     if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
+      return parts[0][0].toUpperCase();
     }
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }

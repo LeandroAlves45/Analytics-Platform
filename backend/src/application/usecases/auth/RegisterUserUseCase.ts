@@ -1,5 +1,8 @@
 /**
- * Regista utilizador, cria workspace default e emite tokens.
+ * Regista utilizador, cria workspace default (owner) e emite par de tokens.
+ *
+ * Side-effects: persistência user + workspace + membership; refresh token em Redis;
+ * log `user_registered`.
  */
 
 import bcrypt from 'bcryptjs';
@@ -13,17 +16,26 @@ import { JwtService } from '@infra/services/JwtService';
 import { ConflictError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
 
-/** Rounds para hash de passwords */
+/** Cost factor bcrypt — 12 rounds equilibra segurança e latência de login. */
 const BCRYPT_ROUNDS = 12;
+
 export class RegisterUserUseCase {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly workspaceRepository: WorkspaceRepository,
     private readonly jwtService: JwtService,
     private readonly refreshTokenStore: RefreshTokenStore,
-    private readonly refreshTokenTtlSeconds: number
+    private readonly refreshTokenTtlSeconds: number,
+    private readonly jwtExpiresIn: string
   ) {}
 
+  /**
+   * Cria conta, workspace free e emite tokens de sessão inicial.
+   *
+   * @param input - Email, password, name; workspaceName opcional.
+   * @returns Tokens + user + workspace recém-criados.
+   * @throws {ConflictError} Email já registado.
+   */
   async execute(input: RegisterInputDTO): Promise<AuthTokensOutputDTO> {
     const existing = await this.userRepository.findByEmail(input.email);
     if (existing) {
@@ -75,7 +87,7 @@ export class RegisterUserUseCase {
     return {
       accessToken,
       refreshToken,
-      expiresIn: '24h',
+      expiresIn: this.jwtExpiresIn,
       user: {
         id: savedUser.id,
         email: savedUser.email,

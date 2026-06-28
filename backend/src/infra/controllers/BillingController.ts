@@ -6,23 +6,37 @@
 
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-
+import { GetBillingInfoUseCase } from '@application/usecases/billing/GetBillingInfoUseCase';
 import { CreateCheckoutSessionUseCase } from '@application/usecases/billing/CreateCheckoutSessionUseCase';
-import type { AuthenticatedRequest } from '@infra/controllers/authenticatedRequest';
-import { resolveDashboardContext } from '@infra/controllers/resolveTenantContext';
+import type { AuthenticatedRequest } from './authenticatedRequest';
+import { resolveDashboardContext } from './resolveTenantContext';
+import { formatValidationError } from './formatValidationError';
 
 const checkoutSchema = z.object({
   targetPlan: z.enum(['pro', 'business', 'enterprise']),
 });
 
 export class BillingController {
-  constructor(private readonly createCheckoutSessionUseCase: CreateCheckoutSessionUseCase) {}
+  constructor(
+    private readonly getBillingInfoUseCase: GetBillingInfoUseCase,
+    private readonly createCheckoutSessionUseCase: CreateCheckoutSessionUseCase
+  ) {}
+
+  getInfo = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { workspaceId } = resolveDashboardContext(req);
+      const info = await this.getBillingInfoUseCase.execute(workspaceId);
+      res.status(200).json({ data: info });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   /**
    * Handler de POST /api/billing/checkout
    * Devolve URL de redirect para Stripe Hosted Checkout.
    */
-  createCheckout = async (
+  checkout = async (
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
@@ -30,37 +44,18 @@ export class BillingController {
     const parseResult = checkoutSchema.safeParse(req.body ?? {});
 
     if (!parseResult.success) {
-      res.status(422).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid request body',
-          details: parseResult.error.issues.map((issue) => ({
-            field: issue.path.join('.'),
-            message: issue.message,
-          })),
-        },
-      });
-      return;
-    }
-
-    let workspaceId: string;
-    let userId: string;
-
-    try {
-      ({ workspaceId, userId } = resolveDashboardContext(req));
-    } catch (error) {
-      next(error);
+      res.status(422).json(formatValidationError(parseResult.error));
       return;
     }
 
     try {
-      const result = await this.createCheckoutSessionUseCase.execute({
+      const { workspaceId, userId } = resolveDashboardContext(req);
+      const session = await this.createCheckoutSessionUseCase.execute({
         workspaceId,
         userId,
         targetPlan: parseResult.data.targetPlan,
       });
-
-      res.status(200).json({ data: result });
+      res.status(200).json({ data: session });
     } catch (error) {
       next(error);
     }

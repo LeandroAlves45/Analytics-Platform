@@ -24,7 +24,7 @@
     "test:integration": "jest --selectProjects integration --runInBand",
     "test:integration:watch": "jest --selectProjects integration --runInBand --watch",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test:coverage": "jest --coverage --runInBand",
     "test:coverage:unit": "jest --selectProjects unit --coverage",
     "test:coverage:integration": "jest --selectProjects integration --coverage --coverageThreshold={} --runInBand",
     "db:generate": "drizzle-kit generate",

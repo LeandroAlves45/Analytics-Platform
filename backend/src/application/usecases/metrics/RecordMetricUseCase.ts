@@ -12,9 +12,14 @@
 import { Metric } from '@domain/entities/Metric';
 import { AppError } from '@shared/errors';
 import { logger } from '@infra/frameworks/logging';
-import { MetricsRepository, AggregationQueueService } from '@application/contracts/repositories';
+import {
+  MetricsRepository,
+  AggregationQueueService,
+  UsageTrackingRepository,
+} from '@application/contracts/repositories';
 import { RecordMetricInputDTO, RecordMetricOutputDTO } from '@application/dto/MetricsDTO';
 import type { ScheduleAggregationRequest } from '@application/dto/AggregationDTO';
+import type { CheckUsageQuotaUseCase } from '@application/usecases/billing/CheckUsageQuotaUseCase';
 
 /**
  * Use case para registar uma métrica.
@@ -25,10 +30,14 @@ export class RecordMetricUseCase {
   // Isto permite substituir por mocks nos testes unitários.
   constructor(
     private readonly metricsRepository: MetricsRepository,
-    private readonly aggregationQueue: AggregationQueueService
+    private readonly aggregationQueue: AggregationQueueService,
+    private readonly checkUsageQuotaUseCase: CheckUsageQuotaUseCase,
+    private readonly usageTrackingRepository: UsageTrackingRepository
   ) {}
 
   async execute(input: RecordMetricInputDTO): Promise<RecordMetricOutputDTO> {
+    await this.checkUsageQuotaUseCase.execute(input.workspaceId);
+
     // Passo 1: criar a entidade.
     // O constructor da Metric valida todas as regras de negócio.
     // Se os dados forem inválidos, ValidationError é lançado aqui.
@@ -85,6 +94,7 @@ export class RecordMetricUseCase {
         method: input.method,
         intervalMinutes: 5,
       };
+      await this.usageTrackingRepository.increment(input.workspaceId, new Date());
       await this.aggregationQueue.scheduleAggregation(aggregationInput);
     } catch (error) {
       logger.warn('aggregation_scheduling_failed', {

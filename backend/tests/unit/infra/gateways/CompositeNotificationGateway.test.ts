@@ -1,9 +1,18 @@
+/**
+ * Testes unitários do gateway composto de notificações.
+ *
+ * Cobrem: agregação de flags `slackSent`/`emailSent` entre múltiplos gateways,
+ * comportamento quando todos falham e fan-out do mesmo payload para cada gateway.
+ * Gateways individuais são mockados — sem Slack nem email real.
+ */
+
 import { CompositeNotificationGateway } from '@infra/gateways/CompositeNotificationGateway';
 import type {
   AlertNotificationPayload,
   NotificationGateway,
 } from '@application/contracts/gateways';
 
+/** Payload de alerta reutilizado em todos os cenários de envio. */
 const PAYLOAD: AlertNotificationPayload = {
   ruleName: 'High p95 latency',
   message: 'threshold exceeded',
@@ -13,6 +22,11 @@ const PAYLOAD: AlertNotificationPayload = {
   workspaceId: '11111111-1111-4111-8111-111111111111',
 };
 
+/**
+ * Cria um mock de `NotificationGateway` com resultado fixo de envio.
+ *
+ * @param result - Flags `slackSent` e `emailSent` devolvidas por `sendAlert`.
+ */
 function makeGateway(result: {
   slackSent: boolean;
   emailSent: boolean;

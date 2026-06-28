@@ -1,16 +1,18 @@
 /**
- * Revoga uma API key do workspace — marca como revoked e impede uso futuro.
+ * Revoga uma API key do workspace — marca como revoked e invalida cache de auth.
  * Verifica membership antes de qualquer acção para garantir isolamento multi-tenant.
  */
 
 import type { ApiKeyRepository, WorkspaceRepository } from '@application/contracts/repositories';
 import type { RevokeApiKeyInputDTO } from '@application/dto/WorkspacesDTO';
+import type { IApiKeyAuthCache } from '@infra/cache/ApiKeyAuthCache';
 import { ForbiddenError, NotFoundError } from '@shared/errors';
 
 export class RevokeApiKeyUseCase {
   constructor(
     private readonly apiKeyRepository: ApiKeyRepository,
-    private readonly workspaceRepository: WorkspaceRepository
+    private readonly workspaceRepository: WorkspaceRepository,
+    private readonly apiKeyAuthCache: IApiKeyAuthCache
   ) {}
 
   async execute(input: RevokeApiKeyInputDTO): Promise<void> {
@@ -25,5 +27,6 @@ export class RevokeApiKeyUseCase {
     }
 
     await this.apiKeyRepository.revoke(input.apiKeyId, input.workspaceId);
+    await this.apiKeyAuthCache.invalidateByApiKeyId(input.apiKeyId);
   }
 }

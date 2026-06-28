@@ -28,8 +28,12 @@ declare global {
  * @param stripeWebhookRouter - Router montado ANTES do JSON parser (raw body Stripe)
  * @returns Instância Express configurada com middleware de infra
  */
-export function createApp(stripeWebhookRouter?: Router): Express {
+export function createApp(stripeWebhookRouter?: Router, corsOrigin?: string): Express {
   const app = express();
+
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+  }
 
   // Webhook Stripe primeiro — signature verification exige raw body.
   if (stripeWebhookRouter) {
@@ -76,10 +80,11 @@ export function createApp(stripeWebhookRouter?: Router): Express {
    * Browsers enviam OPTIONS antes de pedidos cross-origin com Authorization.
    * Responder 204 aqui evita que o preflight caia no handler 404.
    */
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const corsOrigin = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
 
-    res.header('Access-Control-Allow-Origin', corsOrigin);
+  const resolvedCorsOrigin = corsOrigin ?? 'http://localhost:5173';
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.header('Access-Control-Allow-Origin', resolvedCorsOrigin);
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
 
@@ -123,18 +128,25 @@ export function createApp(stripeWebhookRouter?: Router): Express {
 /**
  * Monta routers de negócio e handlers terminais.
  *
+ * Ordem de montagem (a ordem importa no Express):
+ *   1. /api/auth    — register, login, refresh (públicos) + /me (JWT)
+ *   2. /api/metrics — POST ingestão (API key + rate limit) + GET /aggregated (JWT)
+ *   3. /api         — dashboardRouter com jwtAuth: endpoints, alertas, api-keys, billing
+ *   4. 404          — fallback para paths não reconhecidos
+ *   5. errorHandler — captura todos os erros passados via next(err)
+ *
+ * Nota: /api/webhooks/stripe é montado em createApp() ANTES do JSON parser
+ * para preservar o raw body necessário na Stripe signature verification.
+ *
  * @param app     — Instância Express criada por createApp()
  * @param routers — Routers criados pelo bootstrap()
  */
 export function registerRoutes(app: Express, routers: AppRouters): void {
+  app.use('/api/auth', routers.authRouter);
   app.use('/api/metrics', routers.metricsRouter);
-  app.use('/api/endpoints', routers.endpointsRouter);
-  app.use('/api/alert-rules', routers.alertRulesRouter);
-  app.use('/api/alert-events', routers.alertEventsRouter);
-  app.use('/api/billing', routers.billingRouter);
+  app.use('/api', routers.dashboardRouter);
 
   // Handler de 404 — só chega aqui se nenhum router acima correspondeu ao path.
-  // Deve ficar depois de todos os routers para não interceptar rotas válidas.
   app.use((req: Request, res: Response) => {
     res.status(404).json({
       error: {
@@ -145,7 +157,6 @@ export function registerRoutes(app: Express, routers: AppRouters): void {
   });
 
   // Middleware global de erros — SEMPRE o último middleware registado.
-  // Captura qualquer erro passado via next(err) por qualquer router acima.
   // A assinatura com 4 parâmetros é obrigatória para o Express reconhecê-lo
   // como error handler e não como middleware normal.
   app.use(errorHandlerMiddleware);

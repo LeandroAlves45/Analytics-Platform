@@ -37,8 +37,7 @@ const envSchema = z.object({
 
   // JWT
   JWT_SECRET: z.string().min(1),
-  JWT_EXPIRES_IN: z.string().default('24h'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
 
   // Stripe

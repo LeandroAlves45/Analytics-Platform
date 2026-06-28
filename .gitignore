@@ -29,6 +29,8 @@ coverage/
 *.swo
 *~
 .DS_Store
+.vscode/extensions.json
+.code-workspace
 
 # Database
 *.db
@@ -42,6 +44,7 @@ pino-pretty.log
 
 # Redis
 dump.rdb
+.cache/
 
 # Temp files
 tmp/
@@ -59,3 +62,11 @@ docs/adjust_code/*
 backend/code_review_agent.ts
 docs/code_implementation/*
 
+# Others
+.git/
+.gitkeep
+.cache/
+dist-ssr/
+.turbo/
+.next/
+.nuxt/

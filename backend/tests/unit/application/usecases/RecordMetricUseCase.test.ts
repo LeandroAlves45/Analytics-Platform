@@ -5,7 +5,12 @@
  */
 
 import { RecordMetricUseCase } from '@application/usecases/metrics/RecordMetricUseCase';
-import { MetricsRepository, AggregationQueueService } from '@application/contracts/repositories';
+import {
+  MetricsRepository,
+  AggregationQueueService,
+  UsageTrackingRepository,
+} from '@application/contracts/repositories';
+import type { CheckUsageQuotaUseCase } from '@application/usecases/billing/CheckUsageQuotaUseCase';
 import { AppError, ValidationError } from '@shared/errors';
 import { BASE_METRIC_INPUT } from '../../../fixtures/metrics';
 
@@ -15,6 +20,8 @@ describe('RecordMetricUseCase', () => {
   let useCase: RecordMetricUseCase;
   let metricsRepository: jest.Mocked<MetricsRepository>;
   let aggregationQueue: jest.Mocked<AggregationQueueService>;
+  let checkUsageQuotaUseCase: jest.Mocked<Pick<CheckUsageQuotaUseCase, 'execute'>>;
+  let usageTrackingRepository: jest.Mocked<Pick<UsageTrackingRepository, 'increment'>>;
 
   beforeEach(() => {
     metricsRepository = {
@@ -22,13 +29,27 @@ describe('RecordMetricUseCase', () => {
       existsByRequestId: jest.fn().mockResolvedValue(false),
       getRecent: jest.fn().mockResolvedValue([]),
       getActiveEndpoints: jest.fn().mockResolvedValue([]),
+      getActiveEndpointsForWorkspace: jest.fn().mockResolvedValue([]),
     };
 
     aggregationQueue = {
       scheduleAggregation: jest.fn().mockResolvedValue(undefined),
     };
 
-    useCase = new RecordMetricUseCase(metricsRepository, aggregationQueue);
+    checkUsageQuotaUseCase = {
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
+
+    usageTrackingRepository = {
+      increment: jest.fn().mockResolvedValue(undefined),
+    };
+
+    useCase = new RecordMetricUseCase(
+      metricsRepository,
+      aggregationQueue,
+      checkUsageQuotaUseCase as unknown as CheckUsageQuotaUseCase,
+      usageTrackingRepository as unknown as UsageTrackingRepository
+    );
   });
 
   // Grupo 1: fluxo principal (happy path)

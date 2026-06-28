@@ -60,4 +60,13 @@ export interface RefreshTokenStore {
   get(tokenId: string): Promise<{ userId: string; workspaceId: string } | null>;
 
   revoke(tokenId: string): Promise<void>;
+
+  /** True se o token foi revogado recentemente (janela de detecção de reuse). */
+  wasRecentlyRevoked(tokenId: string): Promise<boolean>;
+
+  /** userId associado a um token revogado recentemente — null se marker expirou. */
+  getRevokedUserId(tokenId: string): Promise<string | null>;
+
+  /** Revoga todas as sessões activas do utilizador (resposta a token reuse). */
+  revokeAllForUser(userId: string): Promise<void>;
 }

@@ -1,8 +1,10 @@
-// errors.test.ts
-//
-// Testes unitários para todas as classes de erro da aplicação.
-// Verifica statusCode, code, mensagens, serialização JSON e comportamento
-// de instanceof (garantido pelo Object.setPrototypeOf no constructor de AppError).
+/**
+ * Testes unitários para todas as classes de erro da aplicação.
+ *
+ * Verifica statusCode, code, mensagens, serialização JSON e comportamento
+ * de `instanceof` (garantido pelo `Object.setPrototypeOf` no constructor de AppError).
+ * Não há dependências externas — testes puramente de classes de erro.
+ */
 
 import {
   AppError,
