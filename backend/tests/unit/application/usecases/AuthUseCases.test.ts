@@ -180,14 +180,12 @@ describe('RegisterUserUseCase', () => {
     (bcrypt.hash as jest.Mock).mockResolvedValue('$2a$12$mocked');
 
     const workspaceRepo = {
-      save: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'ws-1',
-          name: "Test's Workspace",
-          slug: 'tests-workspace',
-          plan: 'free',
-        }),
+      save: jest.fn().mockResolvedValue({
+        id: 'ws-1',
+        name: "Test's Workspace",
+        slug: 'tests-workspace',
+        plan: 'free',
+      }),
       addMember: jest.fn().mockResolvedValue(undefined),
     } as unknown as WorkspaceRepository;
 
@@ -450,6 +448,24 @@ describe('LoginUserUseCase', () => {
 
     expect(result.user.name).toBe('');
   });
+
+  it('should throw UnauthorizedError when user status is deleted', async () => {
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+    const deletedUser = { ...mockUserForLogin, status: 'deleted' };
+    const useCase = new LoginUserUseCase(
+      makeUserRepository({ findByEmail: jest.fn().mockResolvedValue(deletedUser) }),
+      {} as WorkspaceRepository,
+      {} as JwtService,
+      makeRefreshTokenStore(),
+      REFRESH_TTL,
+      JWT_EXPIRES_IN
+    );
+
+    await expect(useCase.execute({ email: 'a@b.com', password: 'password123' })).rejects.toThrow(
+      'Invalid credentials'
+    );
+  });
 });
 
 // RefreshTokenUseCase
@@ -626,6 +642,37 @@ describe('RefreshTokenUseCase', () => {
 
     await expect(useCase.execute({ refreshToken: `rt_${tokenId}` })).rejects.toThrow(
       UnauthorizedError
+    );
+  });
+
+  it('should throw UnauthorizedError when user is suspended at refresh time', async () => {
+    const tokenId = '33333333-3333-3333-3333-333333333333';
+    const suspendedUser = {
+      id: 'user-1',
+      email: { value: 'a@b.com' },
+      name: 'Suspended',
+      status: 'suspended',
+      getInitials: () => 'S',
+    };
+
+    const userRepo = {
+      findById: jest.fn().mockResolvedValue(suspendedUser),
+    } as unknown as UserRepository;
+
+    const refreshTokenStore = makeRefreshTokenStore({
+      get: jest.fn().mockResolvedValue({ userId: 'user-1', workspaceId: 'ws-1' }),
+    });
+
+    const useCase = new RefreshTokenUseCase(
+      userRepo,
+      {} as JwtService,
+      refreshTokenStore,
+      REFRESH_TTL,
+      JWT_EXPIRES_IN
+    );
+
+    await expect(useCase.execute({ refreshToken: `rt_${tokenId}` })).rejects.toThrow(
+      'Invalid credentials'
     );
   });
 });

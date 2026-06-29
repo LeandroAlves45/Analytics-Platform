@@ -17,4 +17,6 @@ export interface AuthenticatedRequest extends Request {
   apiKeyId?: string;
   /** ID do utilizador — só presente com JwtAuthMiddleware. */
   userId?: string;
+  /** Cookies HTTP presentes no request — populados pelo middleware cookie-parser. */
+  cookies: Record<string, string>;
 }

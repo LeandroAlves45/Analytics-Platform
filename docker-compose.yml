@@ -1,8 +1,10 @@
 # docker-compose.yml
 # Define o ambiente de desenvolvimento local.
 # Dois serviços: PostgreSQL com TimescaleDB e Redis.
-# Comando para iniciar: docker-compose up -d
-# Comando para parar: docker-compose down
+#
+# Pré-requisito: cp backend/.env.example backend/.env (DATABASE_PORT=5433 com Docker)
+# Iniciar: docker compose --env-file backend/.env up -d
+# Parar:   docker compose down
 
 services:
   # ---------------------------------------------------------------------------
@@ -14,11 +16,11 @@ services:
     image: timescale/timescaledb:latest-pg15
     container_name: analytics-saas-postgres
 
-    # Variáveis de ambiente que o PostgreSQL usa ao iniciar pela primeira vez
+    # Imagem Postgres exige POSTGRES_*; mapeamos a partir de DATABASE_* (backend/.env)
     environment:
-      - POSTGRES_USER=analytics_user
-      - POSTGRES_PASSWORD=analyticspass
-      - POSTGRES_DB=analytics_db
+      - POSTGRES_USER=${DATABASE_USER:-analytics_user}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-analyticspass}
+      - POSTGRES_DB=${DATABASE_NAME:-analytics_db}
 
     # Porta 5433 no host evita conflito com PostgreSQL local (Windows) em 5432.
     ports:
@@ -27,13 +29,13 @@ services:
     # Volume persistente: os dados da base de dados não se perdem
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-      # Script de inicialização executado uma vez
       - ./docker/init-timescaledb.sql:/docker-entrypoint-initdb.d/init-timescaledb.sql
 
     # Healthcheck: verifica se o PostgreSQL está a funcionar
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $POSTGRES_USER -d $POSTGRES_DB']
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${DATABASE_USER:-analytics_user} -d ${DATABASE_NAME:-analytics_db}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,7 +61,9 @@ services:
 
     # Healthcheck: verifica se o Redis está a funcionar
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli ping | grep PONG']
+      test:
+        - CMD-SHELL
+        - redis-cli ping | grep PONG
       interval: 10s
       timeout: 5s
       retries: 5

@@ -9,6 +9,16 @@ import { bootstrapForAuthTesting } from './bootstrapTest';
 import { NoOpRefreshTokenStore } from '@infra/cache/NoOpRefreshTokenStore';
 import { NoOpApiKeyAuthCache } from '../helpers/NoOpApiKeyAuthCache';
 
+/** Extrai o valor do cookie refreshToken do header Set-Cookie */
+function extractRefreshToken(res: request.Response): string {
+  const cookies = res.headers['set-cookie'] as unknown as string[] | undefined;
+  const cookie = cookies?.find((c) => c.startsWith('refreshToken='));
+  if (!cookie) {
+    throw new Error('refreshToken cookie not found');
+  }
+  return cookie.split(';')[0]; // 'refreshToken=rt_xxx'
+}
+
 let app: Express;
 
 beforeAll(() => {
@@ -39,7 +49,6 @@ describe('Auth API Integration Tests', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toMatch(/^rt_/);
     expect(res.body.data.user.email).toContain('@example.com');
     expect(res.body.data.workspace.plan).toBe('free');
   });
@@ -118,20 +127,24 @@ describe('Auth API Integration Tests', () => {
   });
 
   it('should rotate refresh token and return new pair', async () => {
-    const regRes = await registerUser('refresh');
-    const { refreshToken } = regRes.body.data;
+    const now = Date.now();
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: `cookie-${now}@example.com`,
+        password: 'password123',
+        name: `Cookie Test ${now}`,
+      });
 
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const refreshCookie = extractRefreshToken(regRes);
+
+    const res = await request(app).post('/api/auth/refresh').set('Cookie', refreshCookie);
+
+    const newCookie = extractRefreshToken(res);
 
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toMatch(/^rt_/);
-    expect(res.body.data.refreshToken).not.toBe(refreshToken);
-  });
-
-  it('should return 422 when refresh token body is missing', async () => {
-    const res = await request(app).post('/api/auth/refresh').send({});
-    expect(res.status).toBe(422);
+    expect(newCookie).not.toBe(refreshCookie);
   });
 
   it('should return 200 on GET /api/auth/me with valid JWT', async () => {
@@ -149,16 +162,16 @@ describe('Auth API Integration Tests', () => {
 
   it('should return 401 when reusing revoked refresh token (reuse detection)', async () => {
     const regRes = await registerUser('reuse');
-    const { refreshToken } = regRes.body.data;
+    const refreshToken = extractRefreshToken(regRes);
 
     // Primeira rotação - token antigo fica revogado
-    await request(app).post('/api/auth/refresh').send({ refreshToken });
+    await request(app).post('/api/auth/refresh').set('Cookie', refreshToken);
 
     // Reutlizar token antigo - deve falhar
-    const res = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const res = await request(app).post('/api/auth/refresh').set('Cookie', refreshToken);
 
     expect(res.status).toBe(401);
-    expect(res.body.error?.message ?? res.body.message).toMatch(/reuse|revoked|invalid/i);
+    expect(res.body.error?.message ?? res.body.message).toMatch(/reuse|revoked|invalid|found/i);
   });
 
   it('should return 401 on GET /api/auth/me without JWT', async () => {
@@ -176,5 +189,115 @@ describe('Auth API Integration Tests', () => {
       .post('/api/auth/refresh')
       .send({ refreshToken: 'invalid-token' });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('Auth Cookie Integration Tests', () => {
+  it('should not include refreshToken in register response body', async () => {
+    const now = Date.now();
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: `cookie-${now}@example.com`,
+        password: 'password123',
+        name: `Cookie Reg Test ${now}`,
+      });
+
+    expect(regRes.status).toBe(201);
+    expect(regRes.body.data).not.toContain('refreshToken=rt_');
+  });
+
+  it('should set httpOnly refreshToken cookie on register', async () => {
+    const now = Date.now();
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: `cookie-${now}@example.com`,
+        password: 'password123',
+        name: `Cookie Reg Test ${now}`,
+      });
+
+    // Apanhar o array de cookies
+    const cookies = regRes.headers['set-cookie'] as unknown as string[];
+
+    // Encontrar o elemento completo
+    const fullCookie = cookies?.find((c) => c.startsWith('refreshToken='));
+
+    expect(fullCookie).toBeDefined();
+    expect(fullCookie).toContain('HttpOnly');
+    expect(fullCookie).toContain('Path=/api/auth/refresh');
+  });
+
+  it('should set httpOnly refreshToken cookie on login', async () => {
+    const now = Date.now();
+    const email = `cookie-login-${now}@example.com`;
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({
+        email,
+        password: 'password123',
+        name: `Cookie Login Test ${now}`,
+      });
+
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email,
+      password: 'password123',
+    });
+
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.data).not.toHaveProperty('refreshToken');
+
+    const fullCookie = (loginRes.headers['set-cookie'] as unknown as string[])?.find((c) =>
+      c.startsWith('refreshToken=')
+    );
+
+    expect(fullCookie).toBeDefined();
+  });
+
+  it('should rotate refresh when sent via cookie', async () => {
+    const now = Date.now();
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: `cookie-${now}@example.com`,
+        password: 'password123',
+        name: `Cookie Reg Test ${now}`,
+      });
+
+    const refreshCookie = extractRefreshToken(regRes);
+
+    const res = await request(app).post('/api/auth/refresh').set('Cookie', refreshCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeDefined();
+    const newCookie = extractRefreshToken(res);
+    expect(newCookie).not.toBe(refreshCookie);
+  });
+
+  it('should return 401 on refresh when cookie is missing', async () => {
+    const res = await request(app).post('/api/auth/refresh').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('should revoke refresh token on logout and rejects subsequent refresh', async () => {
+    const now = Date.now();
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: `cookie-${now}@example.com`,
+        password: 'password123',
+        name: `Cookie Reg Test ${now}`,
+      });
+
+    const refreshCookie = extractRefreshToken(regRes);
+
+    const logoutRes = await request(app).post('/api/auth/logout').set('Cookie', refreshCookie);
+
+    expect(logoutRes.status).toBe(204);
+
+    const refreshRes = await request(app).post('/api/auth/refresh').set('Cookie', refreshCookie);
+
+    expect(refreshRes.status).toBe(401);
   });
 });

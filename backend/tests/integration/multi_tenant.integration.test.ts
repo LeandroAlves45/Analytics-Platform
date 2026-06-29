@@ -190,4 +190,38 @@ describe('Multi-Tenant Isolation Tests', () => {
 
     expect(ingestRes.status).toBe(401);
   });
+
+  it('should not expose aggregated metrics from another workspace', async () => {
+    const tenantA = await createTenant('A-agg');
+    const tenantB = await createTenant('B-agg');
+
+    // Tenant B ingere uma métrica com a sua API key
+    const keyResB = await request(app)
+      .post(`/api/workspaces/${tenantB.workspaceId}/api-keys`)
+      .set('Authorization', `Bearer ${tenantB.accessToken}`)
+      .send({ name: 'B Agg Key' });
+
+    const bKey = keyResB.body.data.plaintextKey;
+
+    await request(app).post('/api/metrics').set('Authorization', `Bearer ${bKey}`).send({
+      endpoint: '/b-only',
+      method: 'POST',
+      latencyMs: 50,
+      statusCode: 200,
+      requestId: randomUUID(),
+    });
+
+    // Tenant A consulta métricas agregadas -> não deve ver dados de B
+    const resA = await request(app)
+      .get(
+        '/api/metrics/aggregated?interval=5m&from=2020-01-01T00:00:00.000Z&to=2099-01-01T00:00:00.000Z'
+      )
+      .set('Authorization', `Bearer ${tenantA.accessToken}`);
+
+    expect(resA.status).toBe(200);
+
+    // Verifica que nenhum endpoint de B está presente
+    const endpoints = (resA.body.data?.series ?? []).map((d: { endpoint: string }) => d.endpoint);
+    expect(endpoints).not.toContain('/b-only');
+  });
 });

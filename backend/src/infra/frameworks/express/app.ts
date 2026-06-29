@@ -5,6 +5,7 @@
  *   registerRoutes()  — routers de negócio + 404 + error handler
  */
 
+import cookieParser from 'cookie-parser';
 import express, { Express, Request, Response, NextFunction, Router } from 'express';
 import { AppRouters } from './bootstrap';
 import { logger } from '@infra/frameworks/logging';
@@ -39,6 +40,9 @@ export function createApp(stripeWebhookRouter?: Router, corsOrigin?: string): Ex
   if (stripeWebhookRouter) {
     app.use('/api/webhooks/stripe', stripeWebhookRouter);
   }
+
+  // Parseia cookies HTTP.
+  app.use(cookieParser());
 
   // Parseia o body de requests com Content-Type: application/json.
   // Limite de 1mb é suficiente para payloads de métricas.
@@ -87,6 +91,8 @@ export function createApp(stripeWebhookRouter?: Router, corsOrigin?: string): Ex
     res.header('Access-Control-Allow-Origin', resolvedCorsOrigin);
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Vary', 'Origin');
 
     if (req.method === 'OPTIONS') {
       res.status(204);

@@ -370,7 +370,9 @@ export function bootstrapForAuthTesting(): AppRouters {
     registerUserUseCase,
     loginUserUseCase,
     refreshTokenUseCase,
-    userRepository
+    userRepository,
+    refreshTokenStore,
+    config.REFRESH_TOKEN_TTL_SECONDS
   );
   const apiKeysController = new ApiKeysController(
     createApiKeyUseCase,

@@ -10,11 +10,11 @@ import { User } from '@domain/entities/User';
 import { UnauthorizedError } from '@shared/errors';
 
 /**
- * @param user - Entidade carregada da BD após validação de credenciais ou refresh token.
- * @throws {UnauthorizedError} Se `user.status !== 'active'`.
+ * Guarda de segurança — lança UnauthorizedError com mensagem genérica para
+ * não revelar ao atacante que o utilizador existe mas está inactivo (user enumeration).
  */
 export function assertActiveUser(user: User): void {
   if (user.status !== 'active') {
-    throw new UnauthorizedError('Account is not active');
+    throw new UnauthorizedError('Invalid credentials');
   }
 }

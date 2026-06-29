@@ -25,6 +25,7 @@ export function createAuthRouter(
 
   router.post('/register', registerRateLimit, controller.register);
   router.post('/login', loginRateLimit, controller.login);
+  router.post('/logout', controller.logout);
   router.post('/refresh', refreshRateLimit, controller.refresh);
   router.get('/me', jwtAuth, controller.me);
 

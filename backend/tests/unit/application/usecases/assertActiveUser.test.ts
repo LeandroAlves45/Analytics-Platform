@@ -42,7 +42,7 @@ describe('assertActiveUser', () => {
     });
 
     expect(() => assertActiveUser(user)).toThrow(UnauthorizedError);
-    expect(() => assertActiveUser(user)).toThrow('Account is not active');
+    expect(() => assertActiveUser(user)).toThrow('Invalid credentials');
   });
 
   it('should throw UnauthorizedError for deleted user', () => {
@@ -58,6 +58,6 @@ describe('assertActiveUser', () => {
     });
 
     expect(() => assertActiveUser(user)).toThrow(UnauthorizedError);
-    expect(() => assertActiveUser(user)).toThrow('Account is not active');
+    expect(() => assertActiveUser(user)).toThrow('Invalid credentials');
   });
 });
