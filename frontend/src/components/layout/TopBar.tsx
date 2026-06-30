@@ -8,6 +8,7 @@
  */
 
 import { useDashboardStore } from '@/stores/dashboardStore';
+import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 import type { AggregationInterval } from '@/types/metrics';
 
@@ -19,6 +20,21 @@ const INTERVAL_OPTIONS: { value: AggregationInterval; label: string }[] = [
   { value: '1h', label: '1h' },
   { value: '1d', label: '1d' },
 ];
+
+/**
+ * Implementação da iniciais do utilizador
+ */
+function Initials() {
+  const initials = useAuthStore((state) => state.user?.initials ?? '?');
+  return (
+    <div
+      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold text-white select-none"
+      style={{ background: 'linear-gradient(135deg, #9b7fe8, #5bbcf7)' }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 /**
  * SVG do logo extraído do design system —> barras + linha de tendência
@@ -114,14 +130,7 @@ export function TopBar() {
         </div>
 
         {/* Avatar do utilizador — gradiente de marca como fundo */}
-        {/* TODO: Sprint 6 vai substituir "LA" por iniciais do JWT */}
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold text-white select-none"
-          style={{ background: 'linear-gradient(135deg, #9b7fe8, #5bbcf7)' }}
-          aria-label="Utilizador: Leandro Alves"
-        >
-          LA
-        </div>
+        <Initials />
       </div>
     </header>
   );

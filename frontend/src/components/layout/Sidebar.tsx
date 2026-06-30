@@ -33,10 +33,10 @@ const NAV_ITEMS: NavItem[] = [
   { icon: BarChart2, label: 'Dashboard', to: '/', end: true },
   { icon: Activity, label: 'Endpoints', sprint: 4 },
   { icon: Bell, label: 'Alerts', to: '/alerts' },
-  { icon: Key, label: 'API Keys', sprint: 6 },
+  { icon: Key, label: 'API Keys', to: '/api-keys' },
 ];
 
-const BOTTOM_ITEMS: NavItem[] = [{ icon: Settings, label: 'Settings', sprint: 6 }];
+const BOTTOM_ITEMS: NavItem[] = [{ icon: Settings, label: 'Settings', to: '/settings' }];
 
 /**
  * Constrói as classes do botão de navegação conforme o estado activo e desactivado.

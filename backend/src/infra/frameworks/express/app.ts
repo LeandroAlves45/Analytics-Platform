@@ -95,7 +95,7 @@ export function createApp(stripeWebhookRouter?: Router, corsOrigin?: string): Ex
     res.header('Vary', 'Origin');
 
     if (req.method === 'OPTIONS') {
-      res.status(204);
+      res.status(204).end();
       return;
     }
     next();

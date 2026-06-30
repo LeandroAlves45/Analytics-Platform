@@ -414,6 +414,10 @@ export const apiKeys = pgTable(
     workspaceIdIdx: index('api_keys_workspace_id_idx').on(table.workspaceId),
     // Index no hash para lookups rápidos
     keyHashIdx: index('api_keys_key_hash_idx').on(table.keyHash),
+    // Index para lookups rápidos em keyPreview+status
+    keyPreviewStatusIdx: index('api_keys_key_preview_status_idx')
+      .on(table.keyPreview, table.status)
+      .where(sql`${table.status} = 'active'`),
   })
 );
 

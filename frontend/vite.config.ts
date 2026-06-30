@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
@@ -15,8 +14,8 @@ export default defineConfig({
     strictPort: true,
   },
   test: {
-    environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
+    environment: 'jsdom',
+    include: ['tests/unit/**/*.test.{ts,tsx}'],
     setupFiles: ['tests/setup.ts'],
   },
 });

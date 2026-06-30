@@ -19,6 +19,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 import './index.css';
 import App from './App';
 
@@ -47,6 +48,9 @@ const queryClient = new QueryClient({
  * O "!" diz ao TypeScript que temos a certeza que o elemento existe
  */
 const rootElement = document.getElementById('root')!;
+
+// Hydrate o store do Zustand a partir do localStorage
+useAuthStore.getState().hydrateFromStorage();
 
 createRoot(rootElement).render(
   <StrictMode>

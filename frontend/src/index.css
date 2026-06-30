@@ -158,4 +158,66 @@
     height: 1px;
     background: linear-gradient(90deg, transparent, #3dd68c, transparent);
   }
+
+  /* Auth pages — atmosfera de dados + entrada suave */
+  .auth-shell {
+    background-color: var(--bg-app);
+  }
+
+  .auth-brand-panel {
+    border-right: 1px solid var(--border-subtle);
+    background:
+      radial-gradient(ellipse 90% 60% at 10% 20%, rgba(155, 127, 232, 0.14), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 90% 70%, rgba(91, 188, 247, 0.1), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 40% 100%, rgba(249, 122, 74, 0.07), transparent 45%),
+      var(--bg-sidebar);
+  }
+
+  .auth-brand-glow {
+    opacity: 0.9;
+  }
+
+  .auth-grid {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  }
+
+  .auth-card-accent {
+    background: var(--gradient-brand);
+    opacity: 0.85;
+  }
+
+  .auth-fade-in {
+    animation: auth-fade-in 0.55s ease-out both;
+  }
+
+  .auth-fade-in-1 {
+    animation-delay: 0.05s;
+  }
+
+  .auth-fade-in-2 {
+    animation-delay: 0.12s;
+  }
+
+  .auth-fade-in-3 {
+    animation-delay: 0.2s;
+  }
+
+  @keyframes auth-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-fade-in {
+      animation: none;
+    }
+  }
 }

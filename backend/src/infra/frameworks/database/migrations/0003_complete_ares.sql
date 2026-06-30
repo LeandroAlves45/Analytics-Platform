@@ -1,0 +1,1 @@
+CREATE INDEX "api_keys_key_preview_status_idx" ON "api_keys" USING btree ("key_preview","status") WHERE "api_keys"."status" = 'active';

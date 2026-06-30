@@ -1,28 +1,25 @@
 /**
- * Hook de logout — revoga o refresh token no servidor antes de limpar o estado local.
- * Garante que o token Redis não sobrevive ao logout.
-
+ * Hook de logout — envia POST /api/auth/logout (cookie httpOnly vai automaticamente).
+ * O backend revoga o token no Redis e limpa o cookie.
+ * clearAuth() remove metadata do localStorage e access token da memória.
+ */
 
 import { useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import apiClient from '@/api/client';
 
 export function useLogout() {
-  const refreshToken = useAuthStore((state) => state.refreshToken);
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
   return useCallback(async () => {
-    // Tenta revogar o token no servidor -> se falhar, faz logout local na mesma
+    // Sem body — cookie httpOnly enviado automaticamente pelo browser
     try {
-      if (refreshToken) {
-        await apiClient.post('/api/auth/logout', { refreshToken });
-      }
+      await apiClient.post('/api/auth/logout');
     } catch {
-      // Logout local sempre acontece independentemente do servidor
+      // Logout local sempre acontece mesmo que o servidor falhe
     } finally {
       clearAuth();
       window.location.href = '/login';
     }
-  }, [refreshToken, clearAuth]);
+  }, [clearAuth]);
 }
-*/

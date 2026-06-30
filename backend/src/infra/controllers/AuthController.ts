@@ -38,7 +38,7 @@ function refreshCookieOptions(ttlSeconds: number) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict' as const,
-    path: '/api/auth/refresh',
+    path: '/api/auth',
     maxAge: ttlSeconds * 1000,
   };
 }
@@ -181,7 +181,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict' as const,
-        path: '/api/auth/refresh',
+        path: '/api/auth',
       });
 
       res.status(204).send();

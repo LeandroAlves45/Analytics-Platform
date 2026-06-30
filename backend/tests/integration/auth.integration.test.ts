@@ -225,7 +225,8 @@ describe('Auth Cookie Integration Tests', () => {
 
     expect(fullCookie).toBeDefined();
     expect(fullCookie).toContain('HttpOnly');
-    expect(fullCookie).toContain('Path=/api/auth/refresh');
+    // path '/api/auth' (não só '/refresh') -> cookie tem de ser enviado também em /logout
+    expect(fullCookie).toContain('Path=/api/auth;');
   });
 
   it('should set httpOnly refreshToken cookie on login', async () => {
