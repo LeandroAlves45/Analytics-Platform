@@ -11,6 +11,12 @@
  *   6. startServer()             — aceita tráfego HTTP
  */
 
+// Deve ser definido antes de qualquer import que use o threadpool do libuv
+// (bcrypt, crypto, fs assíncrono). O default de 4 threads satura sob concorrência
+// alta de bcrypt.compare (ex.: cache miss simultâneo em múltiplos workspaces),
+// causando fila e p95 elevado. Cross-platform: independe do shell (PowerShell/bash).
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE ?? '16';
+
 import 'dotenv/config';
 
 import { createApp, registerRoutes, startServer } from '@infra/frameworks/express/app';

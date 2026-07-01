@@ -9,6 +9,11 @@
 # Usa Node.js 20- LTS com alpine
 FROM node:20-alpine
 
+# Threadpool do libuv (bcrypt.compare, fs assíncrono) — default de 4 threads
+# satura sob concorrência alta. Redundante com main.ts, mas garante o mesmo
+# valor mesmo que o entrypoint mude.
+ENV UV_THREADPOOL_SIZE=16
+
 # Define diretório de trabalho
 WORKDIR /app
 

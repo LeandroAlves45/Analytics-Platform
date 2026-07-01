@@ -21,8 +21,17 @@ const highlights = [
 export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProps) {
   return (
     <div className="auth-shell min-h-screen flex">
+      <div
+        className="auth-atmosphere absolute inset-0 pointer-events-none lg:hidden"
+        aria-hidden="true"
+      />
+      <div
+        className="auth-brand-glow auth-grid auth-grid-mobile absolute inset-0 pointer-events-none lg:hidden"
+        aria-hidden="true"
+      />
+
       <aside
-        className="auth-brand-panel hidden lg:flex lg:w-[44%] xl:w-[42%] flex-col p-10 xl:p-14 relative overflow-hidden"
+        className="auth-brand-panel auth-atmosphere hidden lg:flex lg:w-[44%] xl:w-[42%] flex-col p-10 xl:p-14 relative overflow-hidden"
         aria-hidden="true"
       >
         <div className="auth-brand-glow auth-grid absolute inset-0 pointer-events-none" />
@@ -73,7 +82,7 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
         </p>
       </aside>
 
-      <main className="flex-1 flex items-center justify-center p-6 sm:p-10">
+      <main className="relative z-10 flex-1 flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-[420px] auth-fade-in auth-fade-in-2">
           <div className="lg:hidden mb-8 flex justify-center">
             <img

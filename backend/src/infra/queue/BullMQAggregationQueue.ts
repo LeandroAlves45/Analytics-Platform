@@ -105,5 +105,7 @@ function buildAggregationJobId(input: ScheduleAggregationInput): string {
     input.windowStart.getTime() / (input.intervalMinutes * 60 * 1_000)
   );
 
-  return `agg:${input.workspaceId}:${input.endpoint}:${input.method}:${input.intervalMinutes}m:${windowBucket}`;
+  // BullMQ rejeita ":" em jobId customizado (colide com o formato interno de
+  // chaves Redis "bull:<queue>:<jobId>") — usa "_" como separador.
+  return `agg_${input.workspaceId}_${input.endpoint}_${input.method}_${input.intervalMinutes}m_${windowBucket}`;
 }

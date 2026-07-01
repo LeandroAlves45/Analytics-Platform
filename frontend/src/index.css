@@ -161,16 +161,20 @@
 
   /* Auth pages — atmosfera de dados + entrada suave */
   .auth-shell {
+    position: relative;
     background-color: var(--bg-app);
   }
 
-  .auth-brand-panel {
-    border-right: 1px solid var(--border-subtle);
+  .auth-atmosphere {
     background:
       radial-gradient(ellipse 90% 60% at 10% 20%, rgba(155, 127, 232, 0.14), transparent 55%),
       radial-gradient(ellipse 70% 50% at 90% 70%, rgba(91, 188, 247, 0.1), transparent 50%),
       radial-gradient(ellipse 60% 40% at 40% 100%, rgba(249, 122, 74, 0.07), transparent 45%),
       var(--bg-sidebar);
+  }
+
+  .auth-brand-panel {
+    border-right: 1px solid var(--border-subtle);
   }
 
   .auth-brand-glow {
@@ -181,6 +185,10 @@
     background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
     background-size: 22px 22px;
     mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  }
+
+  .auth-grid-mobile {
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
   }
 
   .auth-card-accent {
